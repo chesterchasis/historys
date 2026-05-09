@@ -1,11 +1,9 @@
 import { StatusBar } from 'expo-status-bar';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { ResizeMode, Video } from 'expo-av';
-import * as FileSystem from 'expo-file-system';
 import * as ImagePicker from 'expo-image-picker';
 import * as MediaLibrary from 'expo-media-library';
 import * as VideoThumbnails from 'expo-video-thumbnails';
-import { captureRef } from 'react-native-view-shot';
 import {
   Alert,
   GestureResponderEvent,
@@ -15,80 +13,23 @@ import {
   Pressable,
   SafeAreaView,
   ScrollView,
-  StyleSheet,
   Text,
   View,
 } from 'react-native';
-
-type MediaType = 'empty' | 'photo' | 'video';
-type LayoutType =
-  | 'three-horizontal'
-  | 'two-vertical-one-horizontal'
-  | 'one-horizontal-two-vertical';
-type BorderMode = 'black' | 'none';
-
-type SlotSpec = {
-  id: string;
-  style: 'horizontal' | 'vertical';
-};
-
-type SlotStyle = SlotSpec['style'];
-
-type PhotoTransform = {
-  scale: number;
-  translateX: number;
-  translateY: number;
-};
-
-type SlotMedia = {
-  kind: MediaType;
-  uri?: string;
-  previewUri?: string;
-  transform?: PhotoTransform;
-};
-
-type SlotBounds = {
-  x: number;
-  y: number;
-  width: number;
-  height: number;
-};
-
-const LAYOUT_LABELS: Record<LayoutType, string> = {
-  'three-horizontal': '3 slots horizontales',
-  'two-vertical-one-horizontal': '2 verticales + 1 horizontal',
-  'one-horizontal-two-vertical': '1 horizontal + 2 verticales',
-};
-
-const BORDER_LABELS: Record<BorderMode, string> = {
-  black: 'Con bordes negros',
-  none: 'Sin bordes',
-};
-
-const DURATION_OPTIONS = [5, 10, 15, 30];
-const MIN_PHOTO_SCALE = 1;
-const MAX_PHOTO_SCALE = 4;
-const MAX_TRANSLATE = 220;
-const STORY_WIDTH = 1080;
-const STORY_HEIGHT = 1920;
-
-const LAYOUT_SPECS: Record<LayoutType, SlotSpec[]> = {
-  'three-horizontal': [
-    { id: 'slot-1', style: 'horizontal' },
-    { id: 'slot-2', style: 'horizontal' },
-    { id: 'slot-3', style: 'horizontal' },
-  ],
-  'two-vertical-one-horizontal': [
-    { id: 'slot-1', style: 'vertical' },
-    { id: 'slot-2', style: 'vertical' },
-    { id: 'slot-3', style: 'horizontal' },
-  ],
-  'one-horizontal-two-vertical': [
-    { id: 'slot-1', style: 'horizontal' },
-    { id: 'slot-2', style: 'vertical' },
-    { id: 'slot-3', style: 'vertical' },
-  ],
-};
+import { CollageLayout } from './src/components/CollageLayout';
+import {
+  BORDER_LABELS,
+  DURATION_OPTIONS,
+  LAYOUT_LABELS,
+  LAYOUT_SPECS,
+  MAX_PHOTO_SCALE,
+  MAX_TRANSLATE,
+  MIN_PHOTO_SCALE,
+} from './src/constants/collage';
+import styles from './src/styles/appStyles';
+import { BorderMode, LayoutType, MediaType, PhotoTransform, SlotMedia, SlotStyle, SlotSpec } from './src/types/collage';
+import { exportAsImageFallback, exportVideoWithFfmpeg } from './src/utils/collageExport';
+import { clamp } from './src/utils/collageMath';
 
 export default function App() {
   const [layout, setLayout] = useState<LayoutType>('three-horizontal');
@@ -96,6 +37,8 @@ export default function App() {
   const [duration, setDuration] = useState<number>(10);
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
+  const [exportProgress, setExportProgress] = useState(0);
+  const [exportStatus, setExportStatus] = useState('');
   const [previewRemaining, setPreviewRemaining] = useState(0);
   const [previewSession, setPreviewSession] = useState(0);
   const [editingSlotId, setEditingSlotId] = useState<string | null>(null);
@@ -118,14 +61,16 @@ export default function App() {
   const pinchStartDistanceRef = useRef<number | null>(null);
   const pinchStartScaleRef = useRef(1);
   const draftTransformRef = useRef(draftTransform);
+  const exportProgressRef = useRef(0);
   const exportCanvasRef = useRef<View | null>(null);
 
   useEffect(() => {
     draftTransformRef.current = draftTransform;
   }, [draftTransform]);
 
-  const clamp = (value: number, min: number, max: number) =>
-    Math.max(min, Math.min(max, value));
+  useEffect(() => {
+    exportProgressRef.current = exportProgress;
+  }, [exportProgress]);
 
   const getSlotTransform = (slotId: string): PhotoTransform => {
     const media = slots[slotId];
@@ -333,200 +278,10 @@ export default function App() {
     }));
   };
 
-  const getSlotBoundsMap = (): Record<string, SlotBounds> => {
-    const padding = hasBlackBorders ? 24 : 0;
-    const gap = hasBlackBorders ? 24 : 0;
-    const innerWidth = STORY_WIDTH - padding * 2;
-    const innerHeight = STORY_HEIGHT - padding * 2;
-
-    if (layout === 'three-horizontal') {
-      const h1 = Math.floor((innerHeight - gap * 2) / 3);
-      const h2 = h1;
-      const h3 = innerHeight - h1 - h2 - gap * 2;
-      return {
-        'slot-1': { x: padding, y: padding, width: innerWidth, height: h1 },
-        'slot-2': { x: padding, y: padding + h1 + gap, width: innerWidth, height: h2 },
-        'slot-3': {
-          x: padding,
-          y: padding + h1 + gap + h2 + gap,
-          width: innerWidth,
-          height: h3,
-        },
-      };
-    }
-
-    if (layout === 'two-vertical-one-horizontal') {
-      const topHeight = Math.floor((innerHeight - gap) * (2 / 3));
-      const bottomHeight = innerHeight - topHeight - gap;
-      const leftWidth = Math.floor((innerWidth - gap) / 2);
-      const rightWidth = innerWidth - leftWidth - gap;
-      return {
-        'slot-1': { x: padding, y: padding, width: leftWidth, height: topHeight },
-        'slot-2': {
-          x: padding + leftWidth + gap,
-          y: padding,
-          width: rightWidth,
-          height: topHeight,
-        },
-        'slot-3': {
-          x: padding,
-          y: padding + topHeight + gap,
-          width: innerWidth,
-          height: bottomHeight,
-        },
-      };
-    }
-
-    const topHeight = Math.floor((innerHeight - gap) / 3);
-    const bottomHeight = innerHeight - topHeight - gap;
-    const leftWidth = Math.floor((innerWidth - gap) / 2);
-    const rightWidth = innerWidth - leftWidth - gap;
-    return {
-      'slot-1': { x: padding, y: padding, width: innerWidth, height: topHeight },
-      'slot-2': {
-        x: padding,
-        y: padding + topHeight + gap,
-        width: leftWidth,
-        height: bottomHeight,
-      },
-      'slot-3': {
-        x: padding + leftWidth + gap,
-        y: padding + topHeight + gap,
-        width: rightWidth,
-        height: bottomHeight,
-      },
-    };
-  };
-
-  const quoteForFfmpeg = (uri: string) => `"${uri.replace(/"/g, '\\"')}"`;
-  const toFfmpegPath = (uri: string) => (uri.startsWith('file://') ? uri.replace('file://', '') : uri);
-
-  const saveToGallery = async (assetUri: string) => {
-    const asset = await MediaLibrary.createAssetAsync(assetUri);
-    const albumName = 'Collage Motion';
-    const existingAlbum = await MediaLibrary.getAlbumAsync(albumName);
-
-    if (existingAlbum) {
-      await MediaLibrary.addAssetsToAlbumAsync([asset], existingAlbum, false);
-    } else {
-      await MediaLibrary.createAlbumAsync(albumName, asset, false);
-    }
-  };
-
-  const exportAsImageFallback = async () => {
-    if (!exportCanvasRef.current) {
-      throw new Error('No export canvas');
-    }
-
-    await new Promise((resolve) => setTimeout(resolve, 120));
-
-    const exportedImageUri = await captureRef(exportCanvasRef.current, {
-      format: 'jpg',
-      quality: 1,
-      result: 'tmpfile',
-      width: STORY_WIDTH,
-      height: STORY_HEIGHT,
-    });
-
-    await saveToGallery(exportedImageUri);
-  };
-
-  const exportVideoWithFfmpeg = async () => {
-    const ffmpegModule = await import('ffmpeg-kit-react-native');
-    const { FFmpegKit, ReturnCode } = ffmpegModule;
-
-    const slotBoundsMap = getSlotBoundsMap();
-    const inputArgs: string[] = [];
-    const filterChains: string[] = [];
-    const overlays: string[] = ['[0:v]setpts=PTS-STARTPTS[base0]'];
-
-    let inputIndex = 1;
-    let overlayIndex = 0;
-
-    for (const slot of activeSlots) {
-      const media = slots[slot.id] ?? { kind: 'empty' as MediaType };
-      if (media.kind === 'empty' || !media.uri) continue;
-
-      const bounds = slotBoundsMap[slot.id];
-      const inputPath = quoteForFfmpeg(toFfmpegPath(media.uri));
-
-      if (media.kind === 'photo') {
-        inputArgs.push(`-loop 1 -t ${duration} -i ${inputPath}`);
-      } else {
-        inputArgs.push(`-stream_loop -1 -i ${inputPath}`);
-      }
-
-      const slotLabel = `slot${inputIndex}`;
-      const transform = media.transform ?? { scale: 1, translateX: 0, translateY: 0 };
-      const zoom = clamp(transform.scale, MIN_PHOTO_SCALE, MAX_PHOTO_SCALE);
-
-      let translateExpressionX = '';
-      let translateExpressionY = '';
-
-      if (media.kind === 'photo') {
-        const maxOffsetX = Math.round(bounds.width * 0.32);
-        const maxOffsetY = Math.round(bounds.height * 0.32);
-        const offsetX = Math.round((transform.translateX / MAX_TRANSLATE) * maxOffsetX);
-        const offsetY = Math.round((transform.translateY / MAX_TRANSLATE) * maxOffsetY);
-
-        translateExpressionX =
-          offsetX === 0 ? '' : offsetX > 0 ? `-${offsetX}` : `+${Math.abs(offsetX)}`;
-        translateExpressionY =
-          offsetY === 0 ? '' : offsetY > 0 ? `-${offsetY}` : `+${Math.abs(offsetY)}`;
-      }
-
-      const scaledWidth = Math.max(Math.round(bounds.width * zoom), bounds.width);
-      const scaledHeight = Math.max(Math.round(bounds.height * zoom), bounds.height);
-
-      filterChains.push(
-        `[${inputIndex}:v]` +
-          `scale=${scaledWidth}:${scaledHeight}:force_original_aspect_ratio=increase,` +
-          `crop=${bounds.width}:${bounds.height}:` +
-          `x='max(min((iw-${bounds.width})/2${translateExpressionX},iw-${bounds.width}),0)':` +
-          `y='max(min((ih-${bounds.height})/2${translateExpressionY},ih-${bounds.height}),0)',` +
-          `trim=duration=${duration},setpts=PTS-STARTPTS,format=yuv420p[${slotLabel}]`
-      );
-
-      overlays.push(
-        `[base${overlayIndex}][${slotLabel}]` +
-          `overlay=${bounds.x}:${bounds.y}:shortest=1[base${overlayIndex + 1}]`
-      );
-
-      inputIndex += 1;
-      overlayIndex += 1;
-    }
-
-    const outputUri = new FileSystem.File(
-      FileSystem.Paths.cache,
-      `collage_${Date.now()}.mp4`
-    ).uri;
-    const outputPath = quoteForFfmpeg(toFfmpegPath(outputUri));
-
-    const filterComplex = [...filterChains, ...overlays].join(';');
-    const command = [
-      '-y',
-      '-f lavfi',
-      `-i color=c=black:s=${STORY_WIDTH}x${STORY_HEIGHT}:r=30:d=${duration}`,
-      ...inputArgs,
-      `-filter_complex "${filterComplex}"`,
-      `-map "[base${overlayIndex}]"`,
-      '-r 30',
-      '-t',
-      `${duration}`,
-      '-an',
-      '-c:v libx264',
-      '-pix_fmt yuv420p',
-      outputPath,
-    ].join(' ');
-
-    const session = await FFmpegKit.execute(command);
-    const returnCode = await session.getReturnCode();
-
-    if (!ReturnCode.isSuccess(returnCode)) {
-      throw new Error('FFmpeg export failed');
-    }
-
-    await saveToGallery(outputUri);
+  const updateExportProgress = (nextValue: number) => {
+    const clamped = clamp(nextValue, 0, 1);
+    if (Math.abs(clamped - exportProgressRef.current) < 0.01 && clamped !== 1) return;
+    setExportProgress(clamped);
   };
 
   const onExportCollage = async () => {
@@ -537,6 +292,8 @@ export default function App() {
 
     try {
       setIsExporting(true);
+      setExportStatus('Preparando exportación...');
+      updateExportProgress(0.03);
       const permission = await MediaLibrary.requestPermissionsAsync();
       if (!permission.granted) {
         Alert.alert(
@@ -547,10 +304,25 @@ export default function App() {
       }
 
       try {
-        await exportVideoWithFfmpeg();
+        setExportStatus('Renderizando video...');
+        updateExportProgress(0.08);
+        await exportVideoWithFfmpeg({
+          activeSlots,
+          slots,
+          layout,
+          hasBlackBorders,
+          duration,
+          onProgress: (value) => updateExportProgress(value),
+        });
+        setExportStatus('Guardando video en galería...');
+        updateExportProgress(1);
         Alert.alert('Exportación completada', 'Tu collage en video se guardó en la galería.');
       } catch {
-        await exportAsImageFallback();
+        setExportStatus('Video no disponible aquí, exportando imagen...');
+        updateExportProgress(0.4);
+        await exportAsImageFallback({ exportCanvasRef });
+        setExportStatus('Guardando imagen en galería...');
+        updateExportProgress(1);
         Alert.alert(
           'Exportación parcial',
           'No se pudo exportar video en este entorno. Se guardó una imagen del collage.'
@@ -560,6 +332,8 @@ export default function App() {
       Alert.alert('Error de exportación', 'No se pudo exportar el collage. Intenta nuevamente.');
     } finally {
       setIsExporting(false);
+      setExportProgress(0);
+      setExportStatus('');
     }
   };
 
@@ -775,46 +549,12 @@ export default function App() {
               hasBlackBorders ? styles.previewFrameBlackBorders : styles.previewFrameNoBorders,
             ]}
           >
-            {layout === 'three-horizontal' ? (
-              <View
-                style={[
-                  styles.verticalStack,
-                  { gap: hasBlackBorders ? 6 : 0 },
-                ]}
-              >
-                {activeSlots.map(renderSlot)}
-              </View>
-            ) : layout === 'two-vertical-one-horizontal' ? (
-              <>
-                <View
-                  style={[
-                    styles.topRow,
-                    {
-                      gap: hasBlackBorders ? 6 : 0,
-                      marginBottom: hasBlackBorders ? 6 : 0,
-                    },
-                  ]}
-                >
-                  {activeSlots.slice(0, 2).map(renderSlot)}
-                </View>
-                <View style={styles.bottomRow}>{renderSlot(activeSlots[2])}</View>
-              </>
-            ) : (
-              <>
-                <View style={styles.bottomRow}>{renderSlot(activeSlots[0])}</View>
-                <View
-                  style={[
-                    styles.bottomSplitRow,
-                    {
-                      gap: hasBlackBorders ? 6 : 0,
-                      marginTop: hasBlackBorders ? 6 : 0,
-                    },
-                  ]}
-                >
-                  {activeSlots.slice(1, 3).map(renderSlot)}
-                </View>
-              </>
-            )}
+            <CollageLayout
+              layout={layout}
+              hasBlackBorders={hasBlackBorders}
+              slots={activeSlots}
+              renderSlot={renderSlot}
+            />
           </View>
         </View>
 
@@ -860,6 +600,23 @@ export default function App() {
             </View>
           </Pressable>
         </View>
+
+        {isExporting && (
+          <View style={styles.exportProgressCard}>
+            <View style={styles.exportProgressHeader}>
+              <Text style={styles.exportProgressLabel}>{exportStatus || 'Exportando...'}</Text>
+              <Text style={styles.exportProgressPercent}>{Math.round(exportProgress * 100)}%</Text>
+            </View>
+            <View style={styles.exportProgressTrack}>
+              <View
+                style={[
+                  styles.exportProgressFill,
+                  { width: `${Math.max(4, Math.round(exportProgress * 100))}%` },
+                ]}
+              />
+            </View>
+          </View>
+        )}
       </ScrollView>
 
       <View style={styles.exportHiddenWrapper} pointerEvents="none">
@@ -871,41 +628,12 @@ export default function App() {
             hasBlackBorders ? styles.exportCanvasBlackBorders : styles.exportCanvasNoBorders,
           ]}
         >
-          {layout === 'three-horizontal' ? (
-            <View style={[styles.verticalStack, { gap: hasBlackBorders ? 6 : 0 }]}>
-              {activeSlots.map(renderExportSlot)}
-            </View>
-          ) : layout === 'two-vertical-one-horizontal' ? (
-            <>
-              <View
-                style={[
-                  styles.topRow,
-                  {
-                    gap: hasBlackBorders ? 6 : 0,
-                    marginBottom: hasBlackBorders ? 6 : 0,
-                  },
-                ]}
-              >
-                {activeSlots.slice(0, 2).map(renderExportSlot)}
-              </View>
-              <View style={styles.bottomRow}>{renderExportSlot(activeSlots[2])}</View>
-            </>
-          ) : (
-            <>
-              <View style={styles.bottomRow}>{renderExportSlot(activeSlots[0])}</View>
-              <View
-                style={[
-                  styles.bottomSplitRow,
-                  {
-                    gap: hasBlackBorders ? 6 : 0,
-                    marginTop: hasBlackBorders ? 6 : 0,
-                  },
-                ]}
-              >
-                {activeSlots.slice(1, 3).map(renderExportSlot)}
-              </View>
-            </>
-          )}
+          <CollageLayout
+            layout={layout}
+            hasBlackBorders={hasBlackBorders}
+            slots={activeSlots}
+            renderSlot={renderExportSlot}
+          />
         </View>
       </View>
 
@@ -927,46 +655,12 @@ export default function App() {
               hasBlackBorders ? styles.previewCanvasBlackBorders : styles.previewCanvasNoBorders,
             ]}
           >
-            {layout === 'three-horizontal' ? (
-              <View
-                style={[
-                  styles.verticalStack,
-                  { gap: hasBlackBorders ? 6 : 0 },
-                ]}
-              >
-                {activeSlots.map(renderPreviewSlot)}
-              </View>
-            ) : layout === 'two-vertical-one-horizontal' ? (
-              <>
-                <View
-                  style={[
-                    styles.topRow,
-                    {
-                      gap: hasBlackBorders ? 6 : 0,
-                      marginBottom: hasBlackBorders ? 6 : 0,
-                    },
-                  ]}
-                >
-                  {activeSlots.slice(0, 2).map(renderPreviewSlot)}
-                </View>
-                <View style={styles.bottomRow}>{renderPreviewSlot(activeSlots[2])}</View>
-              </>
-            ) : (
-              <>
-                <View style={styles.bottomRow}>{renderPreviewSlot(activeSlots[0])}</View>
-                <View
-                  style={[
-                    styles.bottomSplitRow,
-                    {
-                      gap: hasBlackBorders ? 6 : 0,
-                      marginTop: hasBlackBorders ? 6 : 0,
-                    },
-                  ]}
-                >
-                  {activeSlots.slice(1, 3).map(renderPreviewSlot)}
-                </View>
-              </>
-            )}
+            <CollageLayout
+              layout={layout}
+              hasBlackBorders={hasBlackBorders}
+              slots={activeSlots}
+              renderSlot={renderPreviewSlot}
+            />
           </View>
 
           <Pressable style={styles.previewCloseButton} onPress={() => setIsPreviewOpen(false)}>
@@ -1046,478 +740,3 @@ export default function App() {
     </SafeAreaView>
   );
 }
-
-const styles = StyleSheet.create({
-  safeArea: {
-    flex: 1,
-    backgroundColor: '#f1efeb',
-  },
-  container: {
-    paddingHorizontal: 18,
-    paddingTop: 12,
-    paddingBottom: 28,
-    gap: 14,
-  },
-  title: {
-    fontSize: 30,
-    fontWeight: '700',
-    color: '#1f2527',
-    letterSpacing: 0.4,
-  },
-  subtitle: {
-    fontSize: 14,
-    color: '#626a6e',
-    marginTop: -4,
-  },
-  section: {
-    backgroundColor: '#f9f8f6',
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: '#dbd7d1',
-    padding: 14,
-    gap: 10,
-  },
-  sectionTitle: {
-    fontSize: 15,
-    color: '#31393d',
-    fontWeight: '600',
-  },
-  chipRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-  },
-  chip: {
-    borderWidth: 1,
-    borderColor: '#c7c2bc',
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 999,
-    backgroundColor: '#f2efea',
-  },
-  chipSelected: {
-    backgroundColor: '#2f3638',
-    borderColor: '#2f3638',
-  },
-  chipText: {
-    color: '#4f575b',
-    fontSize: 13,
-    fontWeight: '600',
-  },
-  chipTextSelected: {
-    color: '#f3f2ef',
-  },
-  previewFrame: {
-    width: '100%',
-    aspectRatio: 9 / 16,
-    alignSelf: 'center',
-    overflow: 'hidden',
-  },
-  previewFrameBlackBorders: {
-    borderRadius: 24,
-    borderWidth: 1,
-    borderColor: '#1a1a1a',
-    backgroundColor: '#000000',
-    padding: 6,
-  },
-  previewFrameNoBorders: {
-    borderRadius: 0,
-    borderWidth: 0,
-    backgroundColor: '#ece9e4',
-    padding: 0,
-  },
-  verticalStack: {
-    flex: 1,
-  },
-  topRow: {
-    flexDirection: 'row',
-    flex: 2,
-  },
-  bottomRow: {
-    flex: 1,
-  },
-  bottomSplitRow: {
-    flexDirection: 'row',
-    flex: 2,
-  },
-  slot: {
-    overflow: 'hidden',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#f7f5f1',
-    padding: 12,
-    gap: 2,
-  },
-  slotWithBlackBorders: {
-    borderRadius: 12,
-    borderWidth: 0,
-  },
-  slotWithoutBorders: {
-    borderRadius: 0,
-    borderWidth: 0,
-  },
-  slotPreviewImage: {
-    ...StyleSheet.absoluteFillObject,
-    width: undefined,
-    height: undefined,
-    opacity: 0.95,
-  },
-  videoBadge: {
-    position: 'absolute',
-    top: 10,
-    right: 10,
-    backgroundColor: 'rgba(31, 37, 39, 0.78)',
-    borderRadius: 999,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderWidth: 1,
-    borderColor: '#a9b1b4',
-  },
-  videoBadgeText: {
-    color: '#f5f3ef',
-    fontSize: 10,
-    fontWeight: '700',
-    letterSpacing: 0.6,
-  },
-  horizontalSlot: {
-    flex: 1,
-  },
-  verticalSlot: {
-    flex: 1,
-  },
-  slotFilled: {
-    borderStyle: 'solid',
-    borderColor: '#677073',
-    backgroundColor: '#d9dee0',
-  },
-  slotTitle: {
-    fontSize: 12,
-    color: '#596165',
-    fontWeight: '700',
-    letterSpacing: 0.8,
-  },
-  slotType: {
-    fontSize: 18,
-    color: '#242c2f',
-    fontWeight: '700',
-  },
-  slotHint: {
-    fontSize: 11,
-    color: '#5e666a',
-    textAlign: 'center',
-  },
-  slotActions: {
-    marginTop: 8,
-    flexDirection: 'row',
-    gap: 8,
-  },
-  slotButton: {
-    backgroundColor: '#2f3638',
-    borderRadius: 999,
-    paddingHorizontal: 14,
-    paddingVertical: 7,
-  },
-  slotButtonText: {
-    color: '#f4f2ee',
-    fontSize: 12,
-    fontWeight: '700',
-  },
-  slotButtonGhost: {
-    backgroundColor: '#e9e5df',
-    borderWidth: 1,
-    borderColor: '#b5ada3',
-    borderRadius: 999,
-    paddingHorizontal: 14,
-    paddingVertical: 7,
-  },
-  slotButtonGhostText: {
-    color: '#41484b',
-    fontSize: 12,
-    fontWeight: '700',
-  },
-  summaryCard: {
-    backgroundColor: '#e2dfd8',
-    borderRadius: 18,
-    padding: 14,
-    borderWidth: 1,
-    borderColor: '#cdc8c0',
-    gap: 4,
-  },
-  summaryText: {
-    fontSize: 13,
-    color: '#343d40',
-    fontWeight: '600',
-  },
-  actionsRow: {
-    flexDirection: 'row',
-    gap: 12,
-  },
-  curveButtonOuter: {
-    flex: 1,
-    borderRadius: 26,
-    borderTopLeftRadius: 36,
-    borderBottomRightRadius: 36,
-    backgroundColor: '#d7d2cb',
-    padding: 3,
-  },
-  curveButtonInner: {
-    borderRadius: 22,
-    borderTopLeftRadius: 30,
-    borderBottomRightRadius: 30,
-    backgroundColor: '#f1eeea',
-    minHeight: 52,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: '#b9b2a8',
-  },
-  curveButtonOuterPrimary: {
-    flex: 1,
-    borderRadius: 26,
-    borderTopLeftRadius: 36,
-    borderBottomRightRadius: 36,
-    backgroundColor: '#40494c',
-    padding: 3,
-  },
-  curveButtonInnerPrimary: {
-    borderRadius: 22,
-    borderTopLeftRadius: 30,
-    borderBottomRightRadius: 30,
-    backgroundColor: '#2f3638',
-    minHeight: 52,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: '#6b7477',
-  },
-  curveButtonText: {
-    color: '#2d3437',
-    fontSize: 16,
-    fontWeight: '700',
-  },
-  curveButtonTextPrimary: {
-    color: '#f0ede8',
-    fontSize: 16,
-    fontWeight: '700',
-  },
-  previewSafeArea: {
-    flex: 1,
-    backgroundColor: '#14191a',
-    paddingHorizontal: 14,
-    paddingBottom: 16,
-    paddingTop: 10,
-    gap: 12,
-  },
-  previewHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  previewTitle: {
-    color: '#e8e5e0',
-    fontSize: 18,
-    fontWeight: '700',
-  },
-  previewTimer: {
-    color: '#f2efe9',
-    fontSize: 16,
-    fontWeight: '700',
-    backgroundColor: '#283032',
-    paddingHorizontal: 12,
-    paddingVertical: 5,
-    borderRadius: 999,
-  },
-  previewCanvas: {
-    width: '100%',
-    aspectRatio: 9 / 16,
-    alignSelf: 'center',
-    overflow: 'hidden',
-  },
-  previewCanvasBlackBorders: {
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: '#4f595b',
-    backgroundColor: '#000000',
-    padding: 6,
-  },
-  previewCanvasNoBorders: {
-    borderRadius: 0,
-    borderWidth: 0,
-    backgroundColor: '#21292b',
-    padding: 0,
-  },
-  previewSlot: {
-    overflow: 'hidden',
-    backgroundColor: '#0e1314',
-  },
-  previewSlotWithBlackBorders: {
-    borderRadius: 12,
-    borderWidth: 0,
-  },
-  previewSlotWithoutBorders: {
-    borderRadius: 0,
-    borderWidth: 0,
-  },
-  previewMedia: {
-    width: '100%',
-    height: '100%',
-  },
-  previewEmptyState: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  previewEmptyText: {
-    color: '#b4bdc0',
-    fontSize: 13,
-    fontWeight: '600',
-  },
-  previewCloseButton: {
-    borderRadius: 999,
-    borderWidth: 1,
-    borderColor: '#596466',
-    backgroundColor: '#20282a',
-    paddingVertical: 12,
-    alignItems: 'center',
-  },
-  previewCloseButtonText: {
-    color: '#f1eee8',
-    fontSize: 15,
-    fontWeight: '700',
-  },
-  editorSafeArea: {
-    flex: 1,
-    backgroundColor: '#121719',
-    paddingHorizontal: 14,
-    paddingTop: 10,
-    paddingBottom: 16,
-    gap: 12,
-  },
-  editorTitle: {
-    color: '#ece9e2',
-    fontSize: 20,
-    fontWeight: '700',
-  },
-  editorSubtitle: {
-    color: '#b8c0c3',
-    fontSize: 13,
-    marginTop: -6,
-  },
-  editorCanvas: {
-    width: '100%',
-    alignSelf: 'center',
-    backgroundColor: '#060909',
-    borderRadius: 16,
-    overflow: 'hidden',
-    borderWidth: 1,
-    borderColor: '#3f494c',
-  },
-  editorCanvasVertical: {
-    aspectRatio: 9 / 16,
-  },
-  editorCanvasHorizontal: {
-    aspectRatio: 16 / 9,
-  },
-  editorImage: {
-    width: '100%',
-    height: '100%',
-  },
-  editorZoomRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    gap: 12,
-  },
-  editorZoomButton: {
-    backgroundColor: '#2f3638',
-    borderRadius: 999,
-    width: 42,
-    height: 42,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  editorZoomButtonText: {
-    color: '#efece6',
-    fontSize: 24,
-    fontWeight: '700',
-    marginTop: -2,
-  },
-  editorZoomLabel: {
-    flex: 1,
-    color: '#d9d4cc',
-    fontSize: 14,
-    fontWeight: '600',
-    textAlign: 'center',
-  },
-  editorActionsRow: {
-    flexDirection: 'row',
-    gap: 10,
-  },
-  editorGhostButton: {
-    flex: 1,
-    backgroundColor: '#2a3133',
-    borderRadius: 999,
-    borderWidth: 1,
-    borderColor: '#556063',
-    paddingVertical: 11,
-    alignItems: 'center',
-  },
-  editorGhostButtonText: {
-    color: '#d7d2ca',
-    fontSize: 13,
-    fontWeight: '700',
-  },
-  editorPrimaryButton: {
-    flex: 1,
-    backgroundColor: '#f0ebe3',
-    borderRadius: 999,
-    borderWidth: 1,
-    borderColor: '#d3cdc4',
-    paddingVertical: 11,
-    alignItems: 'center',
-  },
-  editorPrimaryButtonText: {
-    color: '#21282a',
-    fontSize: 13,
-    fontWeight: '800',
-  },
-  exportHiddenWrapper: {
-    position: 'absolute',
-    top: 0,
-    right: -360,
-    opacity: 0.01,
-  },
-  exportCanvas: {
-    width: 220,
-    aspectRatio: 9 / 16,
-    overflow: 'hidden',
-  },
-  exportCanvasBlackBorders: {
-    backgroundColor: '#000000',
-    padding: 6,
-    borderRadius: 0,
-  },
-  exportCanvasNoBorders: {
-    backgroundColor: '#000000',
-    padding: 0,
-    borderRadius: 0,
-  },
-  exportSlot: {
-    overflow: 'hidden',
-    backgroundColor: '#000000',
-  },
-  exportSlotWithBlackBorders: {
-    borderRadius: 0,
-  },
-  exportSlotWithoutBorders: {
-    borderRadius: 0,
-  },
-  exportMedia: {
-    width: '100%',
-    height: '100%',
-  },
-  exportEmptyFill: {
-    flex: 1,
-    backgroundColor: '#000000',
-  },
-});
