@@ -1,6 +1,6 @@
 # Historys
 
-Version actual: v1.0.5
+Version actual: v1.0.6
 
 App movil hecha con Expo para crear collages en formato historia (9:16), combinando fotos y videos en distintos layouts.
 
@@ -117,6 +117,14 @@ La app solicita permisos para:
 - Mejora del manejo de errores de exportacion para mostrar la causa real cuando falle FFmpeg.
 - Mapeo de audio opcional para videos sin pista de audio.
 - Ajuste de espacio superior en el encabezado principal.
+
+## Release v1.0.6
+
+- **CRITICAL FIX**: Reemplazo de generacion de fondo negro mediante `lavfi` (libavfilter) por imagen PNG embedded.
+  - El FFmpeg en el APK no tiene libavfilter compilado, lo que causaba error "Unknown input format: 'lavfi'".
+  - Solucion: La app ahora crea una imagen negra temporal en base64 y la usa como input en lugar de generar color dinamico.
+- Limpieza automatica de archivos temporales (imagen negra) tras exportacion exitosa o error.
+- Mejora de estabilidad de exportacion en diferentes dispositivos Android.
 
 ## Proximos pasos sugeridos
 

@@ -55,6 +55,18 @@ export const exportAsImageFallback = async ({ exportCanvasRef }: ExportImageOpti
   await saveToGallery(exportedImageUri);
 };
 
+// Helper: Generate a black PNG image (1x1) to use as background instead of lavfi
+const createBlackImage = async (): Promise<string> => {
+  // Create a minimal black PNG file
+  const blackPngBase64 =
+    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';
+  const imagePath = FileSystem.Paths.cache + `/black_bg_${Date.now()}.png`;
+  await FileSystem.writeAsStringAsync(imagePath, blackPngBase64, {
+    encoding: 'base64' as any,
+  });
+  return imagePath;
+};
+
 export const exportVideoWithFfmpeg = async ({
   activeSlots,
   slots,
@@ -71,6 +83,9 @@ export const exportVideoWithFfmpeg = async ({
   const filterChains: string[] = [];
   const overlays: string[] = ['[0:v]setpts=PTS-STARTPTS[base0]'];
   const audioMappings: string[] = [];
+
+  // Create black background image
+  const blackImagePath = await createBlackImage();
 
   let inputIndex = 1;
   let overlayIndex = 0;
@@ -133,12 +148,12 @@ export const exportVideoWithFfmpeg = async ({
 
   const outputUri = new FileSystem.File(FileSystem.Paths.cache, `collage_${Date.now()}.mp4`).uri;
   const outputPath = quoteForFfmpeg(toFfmpegPath(outputUri));
+  const blackImageInput = quoteForFfmpeg(toFfmpegPath(blackImagePath));
 
   const filterComplex = [...filterChains, ...overlays].join(';');
   const command = [
     '-y',
-    '-f lavfi',
-    `-i color=c=black:s=${STORY_WIDTH}x${STORY_HEIGHT}:r=30:d=${duration}`,
+    `-loop 1 -t ${duration} -i ${blackImageInput}`,
     ...inputArgs,
     `-filter_complex "${filterComplex}"`,
     `-map "[base${overlayIndex}]"`,
@@ -172,9 +187,19 @@ export const exportVideoWithFfmpeg = async ({
     const output = typeof session?.getOutput === 'function' ? await session.getOutput() : '';
     const failStack =
       typeof session?.getFailStackTrace === 'function' ? await session.getFailStackTrace() : '';
+    // Clean up black image on error
+    try {
+      await FileSystem.deleteAsync(blackImagePath, { idempotent: true });
+    } catch {}
     throw new Error(output || failStack || 'FFmpeg export failed');
   }
 
   onProgress?.(1);
+  
+  // Clean up black image after successful export
+  try {
+    await FileSystem.deleteAsync(blackImagePath, { idempotent: true });
+  } catch {}
+  
   await saveToGallery(outputUri);
 };
