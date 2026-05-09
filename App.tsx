@@ -30,7 +30,12 @@ import {
 } from './src/constants/collage';
 import styles from './src/styles/appStyles';
 import { BorderMode, LayoutType, MediaType, PhotoTransform, SlotMedia, SlotStyle, SlotSpec } from './src/types/collage';
-import { exportAsImageFallback, exportVideoWithFfmpeg } from './src/utils/collageExport';
+import {
+  exportAsImageFallback,
+  exportVideoWithFfmpeg,
+  hasVideoSlots,
+  isRunningInExpoGo,
+} from './src/utils/collageExport';
 import { clamp } from './src/utils/collageMath';
 
 export default function App() {
@@ -238,7 +243,8 @@ export default function App() {
         kind,
         uri: asset.uri,
         previewUri,
-        transform: kind === 'photo' ? { scale: 1, translateX: 0, translateY: 0 } : undefined,
+        transform: { scale: 1, translateX: 0, translateY: 0 },
+        muted: kind === 'video' ? prev[slotId]?.muted ?? false : undefined,
       },
     }));
   };
@@ -280,7 +286,7 @@ export default function App() {
 
   const onOpenPhotoEditor = (slotId: string) => {
     const slotMedia = slots[slotId];
-    if (!slotMedia || slotMedia.kind !== 'photo' || !slotMedia.uri) return;
+    if (!slotMedia || (slotMedia.kind !== 'photo' && slotMedia.kind !== 'video') || !slotMedia.uri) return;
 
     const slotSpec = activeSlots.find((slot) => slot.id === slotId);
     setEditingSlotStyle(slotSpec?.style ?? 'vertical');
@@ -332,6 +338,17 @@ export default function App() {
         return;
       }
 
+      const containsVideo = hasVideoSlots(activeSlots, slots);
+
+      // Expo Go no puede ejecutar FFmpeg ni capturar Video correctamente.
+      if (containsVideo && isRunningInExpoGo()) {
+        Alert.alert(
+          'Exportación de video no disponible en Expo Go',
+          'Tu collage contiene video. La exportación a video usa FFmpeg, un módulo nativo que Expo Go no incluye, y la captura de imagen de un Video tampoco funciona aquí.\n\nCrea un development build:\n  • npx expo run:android\n  • o eas build --profile development -p android'
+        );
+        return;
+      }
+
       try {
         setExportStatus('Renderizando video...');
         updateExportProgress(0.08);
@@ -349,6 +366,17 @@ export default function App() {
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : '';
         console.error('Video export failed', error);
+
+        // Si hay videos en los slots, el fallback de imagen no sirve (saldría negro).
+        if (containsVideo) {
+          Alert.alert(
+            'No se pudo exportar el video',
+            errorMessage ||
+              'FFmpeg no pudo renderizar el collage. Verifica que estás usando un development build con el módulo nativo compilado.'
+          );
+          return;
+        }
+
         setExportStatus('Video no disponible aquí, exportando imagen...');
         updateExportProgress(0.4);
         await exportAsImageFallback({ exportCanvasRef });
@@ -390,6 +418,7 @@ export default function App() {
         {media === 'photo' && slotMedia.uri && (
           <Image
             source={{ uri: slotMedia.uri }}
+            resizeMode="contain"
             style={[
               styles.slotPreviewImage,
               {
@@ -404,7 +433,7 @@ export default function App() {
         )}
 
         {media === 'video' && hasPreview && (
-          <Image source={{ uri: slotMedia.previewUri }} style={styles.slotPreviewImage} />
+          <Image source={{ uri: slotMedia.previewUri }} resizeMode="contain" style={styles.slotPreviewImage} />
         )}
 
         {media === 'video' && (
@@ -424,6 +453,11 @@ export default function App() {
             <Text style={styles.slotButtonText}>{media === 'empty' ? 'Cargar' : 'Reemplazar'}</Text>
           </Pressable>
           {media === 'photo' && (
+            <Pressable style={styles.slotButtonGhost} onPress={() => onOpenPhotoEditor(slot.id)}>
+              <Text style={styles.slotButtonGhostText}>Ajustar</Text>
+            </Pressable>
+          )}
+          {media === 'video' && (
             <Pressable style={styles.slotButtonGhost} onPress={() => onOpenPhotoEditor(slot.id)}>
               <Text style={styles.slotButtonGhostText}>Ajustar</Text>
             </Pressable>
@@ -468,6 +502,7 @@ export default function App() {
         {media === 'photo' && slotMedia.uri && (
           <Image
             source={{ uri: slotMedia.uri }}
+            resizeMode="contain"
             style={[
               styles.previewMedia,
               {
@@ -485,11 +520,20 @@ export default function App() {
           <Video
             key={`video-${slot.id}-${previewSession}`}
             source={{ uri: slotMedia.uri }}
-            style={styles.previewMedia}
+            style={[
+              styles.previewMedia,
+              {
+                transform: [
+                  { scale: transform.scale },
+                  { translateX: transform.translateX },
+                  { translateY: transform.translateY },
+                ],
+              },
+            ]}
             shouldPlay
             isLooping
-            isMuted
-            resizeMode={ResizeMode.COVER}
+            isMuted={Boolean(slotMedia.muted)}
+            resizeMode={ResizeMode.CONTAIN}
           />
         )}
 
@@ -519,6 +563,7 @@ export default function App() {
         {media === 'photo' && slotMedia.uri && (
           <Image
             source={{ uri: slotMedia.uri }}
+            resizeMode="contain"
             style={[
               styles.exportMedia,
               {
@@ -533,7 +578,20 @@ export default function App() {
         )}
 
         {media === 'video' && (slotMedia.previewUri || slotMedia.uri) && (
-          <Image source={{ uri: slotMedia.previewUri ?? slotMedia.uri }} style={styles.exportMedia} />
+          <Image
+            source={{ uri: slotMedia.previewUri ?? slotMedia.uri }}
+            resizeMode="contain"
+            style={[
+              styles.exportMedia,
+              {
+                transform: [
+                  { scale: transform.scale },
+                  { translateX: transform.translateX },
+                  { translateY: transform.translateY },
+                ],
+              },
+            ]}
+          />
         )}
 
         {media === 'empty' && <View style={styles.exportEmptyFill} />}
@@ -751,9 +809,10 @@ export default function App() {
             ]}
             {...photoEditorResponder.panHandlers}
           >
-            {editingSlotId && slots[editingSlotId]?.uri && (
+            {editingSlotId && slots[editingSlotId]?.uri && slots[editingSlotId]?.kind === 'photo' && (
               <Image
                 source={{ uri: slots[editingSlotId]?.uri }}
+                resizeMode="contain"
                 style={[
                   styles.editorImage,
                   {
@@ -764,6 +823,25 @@ export default function App() {
                     ],
                   },
                 ]}
+              />
+            )}
+            {editingSlotId && slots[editingSlotId]?.uri && slots[editingSlotId]?.kind === 'video' && (
+              <Video
+                source={{ uri: slots[editingSlotId]?.uri as string }}
+                style={[
+                  styles.editorImage,
+                  {
+                    transform: [
+                      { scale: draftTransform.scale },
+                      { translateX: draftTransform.translateX },
+                      { translateY: draftTransform.translateY },
+                    ],
+                  },
+                ]}
+                resizeMode={ResizeMode.CONTAIN}
+                shouldPlay
+                isLooping
+                isMuted
               />
             )}
           </View>
