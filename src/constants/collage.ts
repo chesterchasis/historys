@@ -7,7 +7,7 @@ export const LAYOUT_LABELS: Record<LayoutType, string> = {
 };
 
 export const BORDER_LABELS: Record<BorderMode, string> = {
-  black: 'Con bordes negros',
+  black: 'Con bordes',
   none: 'Sin bordes',
 };
 

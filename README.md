@@ -11,7 +11,7 @@ App movil hecha con Expo para crear collages en formato historia (9:16), combina
   - 2 verticales + 1 horizontal.
   - 1 horizontal + 2 verticales.
 - Estilo visual de bordes:
-  - Con bordes negros.
+  - Con bordes.
   - Sin bordes.
 - Ajuste de foto por slot:
   - Zoom con pinza o botones +/-.
@@ -66,7 +66,7 @@ npm run android
 ## Uso rapido
 
 1. Elige el estilo del collage.
-2. Elige si quieres bordes negros o sin bordes.
+2. Elige si quieres bordes o sin bordes.
 3. Carga fotos y/o videos en los slots.
 4. En fotos, pulsa "Ajustar" para encuadrar (zoom y desplazamiento).
 5. Define la duracion.

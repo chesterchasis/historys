@@ -513,7 +513,6 @@ export default function App() {
       <StatusBar style="dark" />
       <ScrollView contentContainerStyle={styles.container}>
         <Text style={styles.title}>Collage Motion</Text>
-        <Text style={styles.subtitle}>Boceto inicial para Android en formato móvil</Text>
 
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Estilo del collage</Text>
