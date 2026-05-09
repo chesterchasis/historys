@@ -111,6 +111,25 @@ La app solicita permisos para:
 - Ajustes finos de calidad/bitrate.
 - Compartir directo a Instagram Stories.
 
+## Diseño del icono (Prompt)
+
+```
+Diseña un icono minimalista y moderno para la app "Collage Motion", 
+una aplicación Android para crear collages en formato vertical (9:16) 
+combinando fotos y videos.
+
+Características del icono:
+- Formato cuadrado (512x512px) con esquinas redondeadas
+- Paleta de colores cálida y moderna: tonos de beige (#e9e5df), gris oscuro (#41484b) y azul suave (#7a9ccc)
+- Centro: 4 marcos superpuestos en disposición de collage (2x2 o 3 capas) 
+  representando fotos y videos entrecruzados
+- Un símbolo de "play" sutil en una esquina para indicar video
+- Movimiento dinámico: líneas o elementos diagonales que sugieran composición en movimiento
+- Fondo: gradiente sutil de beige a blanco
+- Estilo: geométrico, limpio, sin detalles innecesarios
+- Compatible con Light y Dark mode de Android
+```
+
 ## Licencia
 
 Pendiente de definir.
