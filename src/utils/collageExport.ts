@@ -28,7 +28,7 @@ const toFfmpegPath = (uri: string) => (uri.startsWith('file://') ? uri.replace('
 
 export const saveToGallery = async (assetUri: string) => {
   const asset = await MediaLibrary.createAssetAsync(assetUri);
-  const albumName = 'Collage Motion';
+  const albumName = 'Historys';
   const existingAlbum = await MediaLibrary.getAlbumAsync(albumName);
 
   if (existingAlbum) {

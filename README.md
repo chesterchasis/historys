@@ -1,4 +1,4 @@
-# Collage Motion (Expo)
+# Historys
 
 App movil hecha con Expo para crear collages en formato historia (9:16), combinando fotos y videos en distintos layouts.
 
@@ -22,7 +22,7 @@ App movil hecha con Expo para crear collages en formato historia (9:16), combina
   - Prioridad: video MP4 (si entorno nativo soporta FFmpegKit).
   - Fallback: imagen JPG si no hay soporte nativo de FFmpeg.
   - Audio original de videos (con opcion de silenciar por video).
-- Guardado en galeria en album "Collage Motion".
+- Guardado en galeria en album "Historys".
 
 ## Stack tecnico
 
@@ -114,7 +114,7 @@ La app solicita permisos para:
 ## Diseño del icono (Prompt)
 
 ```
-Diseña un icono minimalista y moderno para la app "Collage Motion", 
+Diseña un icono minimalista y moderno para la app "Historys", 
 una aplicación Android para crear collages en formato vertical (9:16) 
 combinando fotos y videos.
 
