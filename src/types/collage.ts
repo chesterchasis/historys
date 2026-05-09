@@ -25,6 +25,7 @@ export type SlotMedia = {
   uri?: string;
   previewUri?: string;
   transform?: PhotoTransform;
+  muted?: boolean;
 };
 
 export type SlotBounds = {

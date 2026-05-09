@@ -174,6 +174,10 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '700',
   },
+  slotButtonGhostMuted: {
+    backgroundColor: '#d4e4f7',
+    borderColor: '#7a9ccc',
+  },
   summaryCard: {
     backgroundColor: '#e2dfd8',
     borderRadius: 18,

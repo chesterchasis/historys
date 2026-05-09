@@ -395,6 +395,19 @@ export default function App() {
               <Text style={styles.slotButtonGhostText}>Ajustar</Text>
             </Pressable>
           )}
+          {media === 'video' && (
+            <Pressable 
+              style={[styles.slotButtonGhost, slotMedia.muted && styles.slotButtonGhostMuted]}
+              onPress={() => setSlots((prev) => ({
+                ...prev,
+                [slot.id]: { ...prev[slot.id], muted: !prev[slot.id]?.muted },
+              }))}
+            >
+              <Text style={styles.slotButtonGhostText}>
+                {slotMedia.muted ? '🔇 Silenciado' : '🔊 Sonido'}
+              </Text>
+            </Pressable>
+          )}
           {media !== 'empty' && (
             <Pressable style={styles.slotButtonGhost} onPress={() => onClearSlot(slot.id)}>
               <Text style={styles.slotButtonGhostText}>Quitar</Text>

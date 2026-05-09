@@ -69,6 +69,7 @@ export const exportVideoWithFfmpeg = async ({
   const inputArgs: string[] = [];
   const filterChains: string[] = [];
   const overlays: string[] = ['[0:v]setpts=PTS-STARTPTS[base0]'];
+  const audioMappings: string[] = [];
 
   let inputIndex = 1;
   let overlayIndex = 0;
@@ -120,6 +121,11 @@ export const exportVideoWithFfmpeg = async ({
         `overlay=${bounds.x}:${bounds.y}:shortest=1[base${overlayIndex + 1}]`
     );
 
+    // Agregar audio si el video no está muteado
+    if (media.kind === 'video' && !media.muted) {
+      audioMappings.push(`-map ${inputIndex}:a:0`);
+    }
+
     inputIndex += 1;
     overlayIndex += 1;
   }
@@ -135,11 +141,12 @@ export const exportVideoWithFfmpeg = async ({
     ...inputArgs,
     `-filter_complex "${filterComplex}"`,
     `-map "[base${overlayIndex}]"`,
+    ...audioMappings,
     '-r 30',
     '-t',
     `${duration}`,
-    '-an',
     '-c:v libx264',
+    '-c:a aac',
     '-pix_fmt yuv420p',
     outputPath,
   ].join(' ');
