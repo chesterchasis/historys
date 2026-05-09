@@ -522,6 +522,37 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '700',
   },
+  dropdownArrowOpen: {
+    transform: [{ rotate: '180deg' }],
+  },
+  dropdownMenu: {
+    backgroundColor: '#eae7e1',
+    borderRadius: 12,
+    marginTop: 8,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: '#d4d1cc',
+  },
+  dropdownMenuItem: {
+    backgroundColor: '#f2efea',
+    borderBottomWidth: 1,
+    borderBottomColor: '#dbd7d1',
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+  },
+  dropdownMenuItemSelected: {
+    backgroundColor: '#2f3638',
+    borderBottomColor: '#1a1a1a',
+  },
+  dropdownMenuItemText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#2f3638',
+    textAlign: 'center',
+  },
+  dropdownMenuItemTextSelected: {
+    color: '#f3f2ef',
+  },
   layoutModalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0, 0, 0, 0.5)',

@@ -43,7 +43,7 @@ export default function App() {
   const [previewSession, setPreviewSession] = useState(0);
   const [editingSlotId, setEditingSlotId] = useState<string | null>(null);
   const [editingSlotStyle, setEditingSlotStyle] = useState<SlotStyle>('vertical');
-  const [isLayoutModalOpen, setIsLayoutModalOpen] = useState(false);
+  const [isLayoutDropdownOpen, setIsLayoutDropdownOpen] = useState(false);
   const [draftTransform, setDraftTransform] = useState<PhotoTransform>({
     scale: 1,
     translateX: 0,
@@ -519,11 +519,37 @@ export default function App() {
           <Text style={styles.sectionTitle}>Estilo del collage</Text>
           <Pressable
             style={styles.dropdownButton}
-            onPress={() => setIsLayoutModalOpen(true)}
+            onPress={() => setIsLayoutDropdownOpen(!isLayoutDropdownOpen)}
           >
             <Text style={styles.dropdownButtonText}>{LAYOUT_LABELS[layout]}</Text>
-            <Text style={styles.dropdownArrow}>▼</Text>
+            <Text style={[styles.dropdownArrow, isLayoutDropdownOpen && styles.dropdownArrowOpen]}>▼</Text>
           </Pressable>
+          {isLayoutDropdownOpen && (
+            <View style={styles.dropdownMenu}>
+              {(Object.keys(LAYOUT_LABELS) as LayoutType[]).map((layoutKey) => (
+                <Pressable
+                  key={layoutKey}
+                  style={[
+                    styles.dropdownMenuItem,
+                    layout === layoutKey && styles.dropdownMenuItemSelected,
+                  ]}
+                  onPress={() => {
+                    setLayout(layoutKey);
+                    setIsLayoutDropdownOpen(false);
+                  }}
+                >
+                  <Text
+                    style={[
+                      styles.dropdownMenuItemText,
+                      layout === layoutKey && styles.dropdownMenuItemTextSelected,
+                    ]}
+                  >
+                    {LAYOUT_LABELS[layoutKey]}
+                  </Text>
+                </Pressable>
+              ))}
+            </View>
+          )}
         </View>
 
         <View style={styles.section}>
@@ -638,47 +664,6 @@ export default function App() {
           />
         </View>
       </View>
-
-      <Modal
-        visible={isLayoutModalOpen}
-        animationType="fade"
-        transparent={true}
-        onRequestClose={() => setIsLayoutModalOpen(false)}
-      >
-        <View style={styles.layoutModalOverlay}>
-          <View style={styles.layoutModalContent}>
-            <Text style={styles.layoutModalTitle}>Elige el estilo</Text>
-            {(Object.keys(LAYOUT_LABELS) as LayoutType[]).map((layoutKey) => (
-              <Pressable
-                key={layoutKey}
-                style={[
-                  styles.layoutModalOption,
-                  layout === layoutKey && styles.layoutModalOptionSelected,
-                ]}
-                onPress={() => {
-                  setLayout(layoutKey);
-                  setIsLayoutModalOpen(false);
-                }}
-              >
-                <Text
-                  style={[
-                    styles.layoutModalOptionText,
-                    layout === layoutKey && styles.layoutModalOptionTextSelected,
-                  ]}
-                >
-                  {LAYOUT_LABELS[layoutKey]}
-                </Text>
-              </Pressable>
-            ))}
-            <Pressable
-              style={styles.layoutModalCloseButton}
-              onPress={() => setIsLayoutModalOpen(false)}
-            >
-              <Text style={styles.layoutModalCloseButtonText}>Cerrar</Text>
-            </Pressable>
-          </View>
-        </View>
-      </Modal>
 
       <Modal
         visible={isPreviewOpen}
