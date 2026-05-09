@@ -101,15 +101,19 @@ La app solicita permisos para:
 
 ## Estado actual
 
-- Boceto funcional avanzado.
-- Preview funcional con fotos y videos.
-- Exportacion funcional (video con fallback a imagen).
-- UI en espanol y orientada a flujo rapido.
+- Flujo funcional para crear collages 9:16 con fotos y videos.
+- Preview funcional con reproduccion en tiempo real.
+- Exportacion funcional a MP4 (con fallback a imagen si FFmpeg no esta disponible).
+- Exportacion con audio original y control de silencio por video (por slot).
+- UI en espanol, compacta y optimizada para mobile.
 
 ## Proximos pasos sugeridos
 
-- Ajustes finos de calidad/bitrate.
-- Compartir directo a Instagram Stories.
+- Selector visual de calidad de exportacion (Baja/Media/Alta) con presets de bitrate.
+- Barra de timeline para definir inicio/fin por video y sincronizar mejor el collage.
+- Guardar y cargar plantillas (layout + bordes + duracion + transformaciones).
+- Exportacion directa para redes (Instagram Stories, TikTok, WhatsApp Status) con atajos.
+- Pantalla de onboarding breve con tips de uso para primera ejecucion.
 
 ## Diseño del icono (Prompt)
 
