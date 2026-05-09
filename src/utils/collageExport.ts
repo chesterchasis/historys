@@ -62,7 +62,7 @@ export const exportVideoWithFfmpeg = async ({
   duration,
   onProgress,
 }: ExportVideoOptions) => {
-  const ffmpegModule = await import('ffmpeg-kit-react-native');
+  const ffmpegModule = await import('@wokcito/ffmpeg-kit-react-native');
   const { FFmpegKit, ReturnCode } = ffmpegModule;
 
   const slotBoundsMap = getSlotBoundsMap(layout, hasBlackBorders);
