@@ -1,5 +1,7 @@
 # Historys
 
+Version actual: v1.0.5
+
 App movil hecha con Expo para crear collages en formato historia (9:16), combinando fotos y videos en distintos layouts.
 
 ## Caracteristicas
@@ -19,7 +21,7 @@ App movil hecha con Expo para crear collages en formato historia (9:16), combina
 - Preview en tiempo real dentro del collage.
 - Duracion configurable del collage (5s, 10s, 15s, 30s).
 - Exportacion:
-  - Prioridad: video MP4 (si entorno nativo soporta FFmpegKit).
+  - Video MP4 en build nativo Android.
   - Fallback: imagen JPG si no hay soporte nativo de FFmpeg.
   - Audio original de videos (con opcion de silenciar por video).
 - Guardado en galeria en album "Historys".
@@ -34,7 +36,7 @@ App movil hecha con Expo para crear collages en formato historia (9:16), combina
 - expo-av
 - expo-media-library
 - react-native-view-shot
-- ffmpeg-kit-react-native
+- @wokcito/ffmpeg-kit-react-native
 - expo-file-system
 
 ## Requisitos
@@ -79,6 +81,7 @@ La exportacion a video usa FFmpegKit (modulo nativo). Por eso:
 
 - En Expo Go puede no estar disponible la exportacion MP4.
 - En ese caso, la app aplica fallback automatico y exporta imagen.
+- En builds nativos la exportacion MP4 esta preparada para conservar audio de videos no silenciados.
 
 Para exportar video de forma consistente, usar Development Build:
 
@@ -103,9 +106,17 @@ La app solicita permisos para:
 
 - Flujo funcional para crear collages 9:16 con fotos y videos.
 - Preview funcional con reproduccion en tiempo real.
-- Exportacion funcional a MP4 (con fallback a imagen si FFmpeg no esta disponible).
+- Exportacion funcional a MP4 en build nativo Android, con fallback a imagen cuando el entorno no soporta FFmpeg.
 - Exportacion con audio original y control de silencio por video (por slot).
 - UI en espanol, compacta y optimizada para mobile.
+- Ajuste visual del encabezado para respetar mejor el borde superior del telefono.
+
+## Release v1.0.5
+
+- Correccion de exportacion de video para evitar dependencias de codec no soportadas por el paquete FFmpeg instalado.
+- Mejora del manejo de errores de exportacion para mostrar la causa real cuando falle FFmpeg.
+- Mapeo de audio opcional para videos sin pista de audio.
+- Ajuste de espacio superior en el encabezado principal.
 
 ## Proximos pasos sugeridos
 

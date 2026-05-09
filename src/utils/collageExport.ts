@@ -25,6 +25,7 @@ type ExportImageOptions = {
 
 const quoteForFfmpeg = (uri: string) => `"${uri.replace(/"/g, '\\"')}"`;
 const toFfmpegPath = (uri: string) => (uri.startsWith('file://') ? uri.replace('file://', '') : uri);
+const VIDEO_CODEC = 'mpeg4';
 
 export const saveToGallery = async (assetUri: string) => {
   const asset = await MediaLibrary.createAssetAsync(assetUri);
@@ -123,7 +124,7 @@ export const exportVideoWithFfmpeg = async ({
 
     // Agregar audio si el video no está muteado
     if (media.kind === 'video' && !media.muted) {
-      audioMappings.push(`-map ${inputIndex}:a:0`);
+      audioMappings.push(`-map ${inputIndex}:a:0?`);
     }
 
     inputIndex += 1;
@@ -145,7 +146,8 @@ export const exportVideoWithFfmpeg = async ({
     '-r 30',
     '-t',
     `${duration}`,
-    '-c:v libx264',
+    '-c:v',
+    VIDEO_CODEC,
     '-c:a aac',
     '-pix_fmt yuv420p',
     outputPath,
@@ -167,7 +169,10 @@ export const exportVideoWithFfmpeg = async ({
   const returnCode = await session.getReturnCode();
 
   if (!ReturnCode.isSuccess(returnCode)) {
-    throw new Error('FFmpeg export failed');
+    const output = typeof session?.getOutput === 'function' ? await session.getOutput() : '';
+    const failStack =
+      typeof session?.getFailStackTrace === 'function' ? await session.getFailStackTrace() : '';
+    throw new Error(output || failStack || 'FFmpeg export failed');
   }
 
   onProgress?.(1);

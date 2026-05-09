@@ -346,7 +346,9 @@ export default function App() {
         setExportStatus('Guardando video en galería...');
         updateExportProgress(1);
         Alert.alert('Exportación completada', 'Tu collage en video se guardó en la galería.');
-      } catch {
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : '';
+        console.error('Video export failed', error);
         setExportStatus('Video no disponible aquí, exportando imagen...');
         updateExportProgress(0.4);
         await exportAsImageFallback({ exportCanvasRef });
@@ -354,7 +356,9 @@ export default function App() {
         updateExportProgress(1);
         Alert.alert(
           'Exportación parcial',
-          'No se pudo exportar video en este entorno. Se guardó una imagen del collage.'
+          errorMessage
+            ? `No se pudo exportar video. ${errorMessage}. Se guardó una imagen del collage.`
+            : 'No se pudo exportar video en este entorno. Se guardó una imagen del collage.'
         );
       }
     } catch {
