@@ -5,7 +5,9 @@ import * as ImagePicker from 'expo-image-picker';
 import * as MediaLibrary from 'expo-media-library';
 import * as VideoThumbnails from 'expo-video-thumbnails';
 import {
+  Animated,
   Alert,
+  Easing,
   GestureResponderEvent,
   Image,
   Modal,
@@ -61,6 +63,7 @@ export default function App() {
   const panStartRef = useRef({ x: 0, y: 0 });
   const pinchStartDistanceRef = useRef<number | null>(null);
   const pinchStartScaleRef = useRef(1);
+  const dropdownAnimation = useRef(new Animated.Value(0)).current;
   const draftTransformRef = useRef(draftTransform);
   const exportProgressRef = useRef(0);
   const exportCanvasRef = useRef<View | null>(null);
@@ -72,6 +75,15 @@ export default function App() {
   useEffect(() => {
     exportProgressRef.current = exportProgress;
   }, [exportProgress]);
+
+  useEffect(() => {
+    Animated.timing(dropdownAnimation, {
+      toValue: isLayoutDropdownOpen ? 1 : 0,
+      duration: 220,
+      easing: Easing.out(Easing.cubic),
+      useNativeDriver: false,
+    }).start();
+  }, [dropdownAnimation, isLayoutDropdownOpen]);
 
   const getSlotTransform = (slotId: string): PhotoTransform => {
     const media = slots[slotId];
@@ -149,6 +161,22 @@ export default function App() {
   ).current;
 
   const filledCount = activeSlots.filter((slot) => slots[slot.id]?.kind !== 'empty').length;
+  const dropdownHeight = dropdownAnimation.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0, 156],
+  });
+  const dropdownOpacity = dropdownAnimation.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0, 1],
+  });
+  const dropdownTranslateY = dropdownAnimation.interpolate({
+    inputRange: [0, 1],
+    outputRange: [-6, 0],
+  });
+  const dropdownRotate = dropdownAnimation.interpolate({
+    inputRange: [0, 1],
+    outputRange: ['0deg', '180deg'],
+  });
 
   useEffect(() => {
     if (!isPreviewOpen) return;
@@ -512,8 +540,11 @@ export default function App() {
   return (
     <SafeAreaView style={styles.safeArea}>
       <StatusBar style="dark" />
-      <ScrollView contentContainerStyle={styles.container}>
-        <Text style={styles.title}>Historys</Text>
+      <ScrollView contentContainerStyle={styles.container} onScrollBeginDrag={() => setIsLayoutDropdownOpen(false)}>
+        <View style={styles.titleRow}>
+          <Image source={require('./assets/icon.png')} style={styles.titleIcon} />
+          <Text style={styles.title}>Historys</Text>
+        </View>
 
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Estilo del collage</Text>
@@ -522,10 +553,20 @@ export default function App() {
             onPress={() => setIsLayoutDropdownOpen(!isLayoutDropdownOpen)}
           >
             <Text style={styles.dropdownButtonText}>{LAYOUT_LABELS[layout]}</Text>
-            <Text style={[styles.dropdownArrow, isLayoutDropdownOpen && styles.dropdownArrowOpen]}>▼</Text>
+            <Animated.Text style={[styles.dropdownArrow, { transform: [{ rotate: dropdownRotate }] }]}>▼</Animated.Text>
           </Pressable>
-          {isLayoutDropdownOpen && (
-            <View style={styles.dropdownMenu}>
+          <Animated.View
+            pointerEvents={isLayoutDropdownOpen ? 'auto' : 'none'}
+            style={[
+              styles.dropdownMenu,
+              {
+                maxHeight: dropdownHeight,
+                opacity: dropdownOpacity,
+                transform: [{ translateY: dropdownTranslateY }],
+                marginTop: isLayoutDropdownOpen ? 8 : 0,
+              },
+            ]}
+          >
               {(Object.keys(LAYOUT_LABELS) as LayoutType[]).map((layoutKey) => (
                 <Pressable
                   key={layoutKey}
@@ -548,8 +589,7 @@ export default function App() {
                   </Text>
                 </Pressable>
               ))}
-            </View>
-          )}
+          </Animated.View>
         </View>
 
         <View style={styles.section}>
@@ -587,30 +627,21 @@ export default function App() {
         </View>
 
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Duración del collage</Text>
-          <View style={styles.chipRow}>
+          <View style={styles.durationRow}>
             {DURATION_OPTIONS.map((seconds) => (
               <Pressable
                 key={seconds}
-                style={[styles.chip, duration === seconds && styles.chipSelected]}
+                style={[styles.durationChip, duration === seconds && styles.chipSelected]}
                 onPress={() => setDuration(seconds)}
               >
                 <Text
-                  style={[styles.chipText, duration === seconds && styles.chipTextSelected]}
+                  style={[styles.durationChipText, duration === seconds && styles.chipTextSelected]}
                 >
                   {seconds}s
                 </Text>
               </Pressable>
             ))}
           </View>
-        </View>
-
-        <View style={styles.summaryCard}>
-          <Text style={styles.summaryText}>Estilo: {LAYOUT_LABELS[layout]}</Text>
-          <Text style={styles.summaryText}>Bordes: {BORDER_LABELS[borderMode]}</Text>
-          <Text style={styles.summaryText}>Duración: {duration} segundos</Text>
-          <Text style={styles.summaryText}>Dimensión Story: 1080 x 1920 (9:16)</Text>
-          <Text style={styles.summaryText}>Slots con contenido: {filledCount}/3</Text>
         </View>
 
         <View style={styles.actionsRow}>

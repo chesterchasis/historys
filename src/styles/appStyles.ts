@@ -11,6 +11,16 @@ const styles = StyleSheet.create({
     paddingBottom: 28,
     gap: 14,
   },
+  titleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  titleIcon: {
+    width: 34,
+    height: 34,
+    borderRadius: 8,
+  },
   title: {
     fontSize: 30,
     fontWeight: '700',
@@ -59,6 +69,26 @@ const styles = StyleSheet.create({
   },
   chipTextSelected: {
     color: '#f3f2ef',
+  },
+  durationRow: {
+    flexDirection: 'row',
+    gap: 8,
+    width: '100%',
+  },
+  durationChip: {
+    flex: 1,
+    borderWidth: 1,
+    borderColor: '#c7c2bc',
+    borderRadius: 999,
+    backgroundColor: '#f2efea',
+    paddingVertical: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  durationChipText: {
+    color: '#4f575b',
+    fontSize: 15,
+    fontWeight: '700',
   },
   previewFrame: {
     width: '100%',
@@ -177,19 +207,6 @@ const styles = StyleSheet.create({
   slotButtonGhostMuted: {
     backgroundColor: '#d4e4f7',
     borderColor: '#7a9ccc',
-  },
-  summaryCard: {
-    backgroundColor: '#e2dfd8',
-    borderRadius: 18,
-    padding: 14,
-    borderWidth: 1,
-    borderColor: '#cdc8c0',
-    gap: 4,
-  },
-  summaryText: {
-    fontSize: 13,
-    color: '#343d40',
-    fontWeight: '600',
   },
   actionsRow: {
     flexDirection: 'row',
@@ -522,13 +539,9 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '700',
   },
-  dropdownArrowOpen: {
-    transform: [{ rotate: '180deg' }],
-  },
   dropdownMenu: {
     backgroundColor: '#eae7e1',
     borderRadius: 12,
-    marginTop: 8,
     overflow: 'hidden',
     borderWidth: 1,
     borderColor: '#d4d1cc',
@@ -552,62 +565,6 @@ const styles = StyleSheet.create({
   },
   dropdownMenuItemTextSelected: {
     color: '#f3f2ef',
-  },
-  layoutModalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-    justifyContent: 'flex-end',
-  },
-  layoutModalContent: {
-    backgroundColor: '#f9f8f6',
-    borderTopLeftRadius: 28,
-    borderTopRightRadius: 28,
-    paddingHorizontal: 18,
-    paddingTop: 20,
-    paddingBottom: 24,
-    borderTopWidth: 1,
-    borderTopColor: '#dbd7d1',
-    gap: 12,
-  },
-  layoutModalTitle: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: '#1f2527',
-    marginBottom: 8,
-  },
-  layoutModalOption: {
-    backgroundColor: '#f2efea',
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: '#c7c2bc',
-    paddingHorizontal: 14,
-    paddingVertical: 14,
-  },
-  layoutModalOptionSelected: {
-    backgroundColor: '#2f3638',
-    borderColor: '#2f3638',
-  },
-  layoutModalOptionText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#2f3638',
-    textAlign: 'center',
-  },
-  layoutModalOptionTextSelected: {
-    color: '#f3f2ef',
-  },
-  layoutModalCloseButton: {
-    backgroundColor: '#e2dfd8',
-    borderRadius: 14,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    marginTop: 8,
-  },
-  layoutModalCloseButtonText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#2f3638',
-    textAlign: 'center',
   },
 });
 
