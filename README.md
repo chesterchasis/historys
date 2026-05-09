@@ -21,6 +21,7 @@ App movil hecha con Expo para crear collages en formato historia (9:16), combina
 - Exportacion:
   - Prioridad: video MP4 (si entorno nativo soporta FFmpegKit).
   - Fallback: imagen JPG si no hay soporte nativo de FFmpeg.
+  - Audio original de videos (con opcion de silenciar por video).
 - Guardado en galeria en album "Collage Motion".
 
 ## Stack tecnico
@@ -107,8 +108,6 @@ La app solicita permisos para:
 
 ## Proximos pasos sugeridos
 
-- Barra de progreso real durante render de video.
-- Exportar audio original de videos (actualmente exporta sin audio).
 - Ajustes finos de calidad/bitrate.
 - Compartir directo a Instagram Stories.
 
