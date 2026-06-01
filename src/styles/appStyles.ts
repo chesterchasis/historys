@@ -7,14 +7,51 @@ const styles = StyleSheet.create({
   },
   container: {
     paddingHorizontal: 18,
-    paddingTop: 48,
-    paddingBottom: 28,
-    gap: 14,
+    paddingTop: 42,
+    paddingBottom: 24,
+    gap: 12,
   },
   titleRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
+  },
+  titleTextFlex: {
+    flex: 1,
+    minWidth: 0,
+    justifyContent: 'center',
+  },
+  titleToolbar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  titleToolButton: {
+    width: 38,
+    height: 38,
+    borderRadius: 999,
+    backgroundColor: '#f9f8f6',
+    borderWidth: 1,
+    borderColor: '#dbd7d1',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  titleToolButtonFilled: {
+    backgroundColor: '#2f3638',
+    borderColor: '#2f3638',
+  },
+  titleToolButtonInfo: {
+    fontSize: 17,
+    fontStyle: 'italic',
+    fontWeight: '800',
+    color: '#2f3638',
+    marginTop: -1,
+  },
+  titleToolButtonReset: {
+    fontSize: 15,
+    fontWeight: '800',
+    color: '#f4f2ee',
+    letterSpacing: 0.5,
   },
   titleIcon: {
     width: 34,
@@ -22,13 +59,13 @@ const styles = StyleSheet.create({
     borderRadius: 8,
   },
   title: {
-    fontSize: 30,
+    fontSize: 26,
     fontWeight: '700',
     color: '#1f2527',
-    letterSpacing: 0.4,
+    letterSpacing: 0.3,
   },
   subtitle: {
-    fontSize: 14,
+    fontSize: 12,
     color: '#626a6e',
     marginTop: -4,
   },
@@ -37,13 +74,38 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     borderWidth: 1,
     borderColor: '#dbd7d1',
-    padding: 14,
-    gap: 10,
+    padding: 12,
+    gap: 8,
   },
   sectionTitle: {
-    fontSize: 15,
+    fontSize: 13,
     color: '#31393d',
     fontWeight: '600',
+  },
+  infoModalCard: {
+    maxHeight: '85%',
+    width: '100%',
+    maxWidth: 360,
+  },
+  infoModalScroll: {
+    flexGrow: 0,
+    maxHeight: 420,
+    marginBottom: 4,
+  },
+  infoModalSectionTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#2f3638',
+    marginTop: 12,
+    marginBottom: 6,
+  },
+  infoModalSectionTitleFirst: {
+    marginTop: 0,
+  },
+  infoModalParagraph: {
+    fontSize: 13,
+    lineHeight: 19,
+    color: '#626a6e',
   },
   chipRow: {
     flexDirection: 'row',
@@ -53,8 +115,8 @@ const styles = StyleSheet.create({
   chip: {
     borderWidth: 1,
     borderColor: '#c7c2bc',
-    paddingHorizontal: 12,
-    paddingVertical: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
     borderRadius: 999,
     backgroundColor: '#f2efea',
   },
@@ -64,7 +126,7 @@ const styles = StyleSheet.create({
   },
   chipText: {
     color: '#4f575b',
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: '600',
   },
   chipTextSelected: {
@@ -81,13 +143,13 @@ const styles = StyleSheet.create({
     borderColor: '#c7c2bc',
     borderRadius: 999,
     backgroundColor: '#f2efea',
-    paddingVertical: 12,
+    paddingVertical: 10,
     alignItems: 'center',
     justifyContent: 'center',
   },
   durationChipText: {
     color: '#4f575b',
-    fontSize: 15,
+    fontSize: 13,
     fontWeight: '700',
   },
   previewFrame: {
@@ -111,11 +173,27 @@ const styles = StyleSheet.create({
   },
   slot: {
     overflow: 'hidden',
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: 'stretch',
+    justifyContent: 'flex-start',
     backgroundColor: '#f7f5f1',
-    padding: 12,
-    gap: 2,
+    padding: 6,
+    gap: 3,
+  },
+  slotPreviewBlock: {
+    flex: 1,
+    width: '100%',
+    minHeight: 0,
+    position: 'relative',
+  },
+  slotFooter: {
+    width: '100%',
+    flexShrink: 0,
+    gap: 4,
+    alignItems: 'stretch',
+  },
+  slotMetaRow: {
+    width: '100%',
+    alignItems: 'center',
   },
   slotWithBlackBorders: {
     borderRadius: 12,
@@ -144,9 +222,9 @@ const styles = StyleSheet.create({
   },
   videoBadgeText: {
     color: '#f5f3ef',
-    fontSize: 10,
+    fontSize: 9,
     fontWeight: '700',
-    letterSpacing: 0.6,
+    letterSpacing: 0.5,
   },
   horizontalSlot: {
     flex: 1,
@@ -160,35 +238,47 @@ const styles = StyleSheet.create({
     backgroundColor: '#d9dee0',
   },
   slotTitle: {
-    fontSize: 12,
+    fontSize: 10,
     color: '#596165',
     fontWeight: '700',
-    letterSpacing: 0.8,
+    letterSpacing: 0.6,
   },
   slotType: {
-    fontSize: 18,
+    fontSize: 14,
     color: '#242c2f',
     fontWeight: '700',
   },
   slotHint: {
-    fontSize: 11,
+    fontSize: 10,
     color: '#5e666a',
     textAlign: 'center',
   },
   slotActions: {
-    marginTop: 8,
+    width: '100%',
+    marginTop: 2,
+    gap: 6,
+  },
+  slotActionsRow: {
     flexDirection: 'row',
-    gap: 8,
+    flexWrap: 'wrap',
+    justifyContent: 'center',
+    alignContent: 'center',
+  },
+  slotActionsColumn: {
+    flexDirection: 'column',
+    alignItems: 'stretch',
   },
   slotButton: {
     backgroundColor: '#2f3638',
     borderRadius: 999,
-    paddingHorizontal: 14,
-    paddingVertical: 7,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   slotButtonText: {
     color: '#f4f2ee',
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: '700',
   },
   slotButtonGhost: {
@@ -196,12 +286,14 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#b5ada3',
     borderRadius: 999,
-    paddingHorizontal: 14,
-    paddingVertical: 7,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   slotButtonGhostText: {
     color: '#41484b',
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: '700',
   },
   slotButtonGhostMuted: {
@@ -225,7 +317,7 @@ const styles = StyleSheet.create({
     borderTopLeftRadius: 30,
     borderBottomRightRadius: 30,
     backgroundColor: '#f1eeea',
-    minHeight: 52,
+    minHeight: 46,
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
@@ -244,7 +336,7 @@ const styles = StyleSheet.create({
     borderTopLeftRadius: 30,
     borderBottomRightRadius: 30,
     backgroundColor: '#2f3638',
-    minHeight: 52,
+    minHeight: 46,
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
@@ -252,12 +344,12 @@ const styles = StyleSheet.create({
   },
   curveButtonText: {
     color: '#2d3437',
-    fontSize: 16,
+    fontSize: 14,
     fontWeight: '700',
   },
   curveButtonTextPrimary: {
     color: '#f0ede8',
-    fontSize: 16,
+    fontSize: 14,
     fontWeight: '700',
   },
   previewSafeArea: {
@@ -265,22 +357,24 @@ const styles = StyleSheet.create({
     backgroundColor: '#14191a',
     paddingHorizontal: 14,
     paddingBottom: 16,
-    paddingTop: 10,
-    gap: 12,
+    paddingTop: 28,
+    gap: 14,
   },
   previewHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+    marginTop: 8,
+    paddingTop: 4,
   },
   previewTitle: {
     color: '#e8e5e0',
-    fontSize: 18,
+    fontSize: 16,
     fontWeight: '700',
   },
   previewTimer: {
     color: '#f2efe9',
-    fontSize: 16,
+    fontSize: 14,
     fontWeight: '700',
     backgroundColor: '#283032',
     paddingHorizontal: 12,
@@ -329,7 +423,7 @@ const styles = StyleSheet.create({
   },
   previewEmptyText: {
     color: '#b4bdc0',
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: '600',
   },
   previewCloseButton: {
@@ -342,7 +436,7 @@ const styles = StyleSheet.create({
   },
   previewCloseButtonText: {
     color: '#f1eee8',
-    fontSize: 15,
+    fontSize: 13,
     fontWeight: '700',
   },
   editorSafeArea: {
@@ -355,12 +449,12 @@ const styles = StyleSheet.create({
   },
   editorTitle: {
     color: '#ece9e2',
-    fontSize: 20,
+    fontSize: 17,
     fontWeight: '700',
   },
   editorSubtitle: {
     color: '#b8c0c3',
-    fontSize: 13,
+    fontSize: 12,
     marginTop: -6,
   },
   editorCanvas: {
@@ -398,14 +492,14 @@ const styles = StyleSheet.create({
   },
   editorZoomButtonText: {
     color: '#efece6',
-    fontSize: 24,
+    fontSize: 22,
     fontWeight: '700',
     marginTop: -2,
   },
   editorZoomLabel: {
     flex: 1,
     color: '#d9d4cc',
-    fontSize: 14,
+    fontSize: 12,
     fontWeight: '600',
     textAlign: 'center',
   },
@@ -424,7 +518,7 @@ const styles = StyleSheet.create({
   },
   editorGhostButtonText: {
     color: '#d7d2ca',
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: '700',
   },
   editorPrimaryButton: {
@@ -438,7 +532,7 @@ const styles = StyleSheet.create({
   },
   editorPrimaryButtonText: {
     color: '#21282a',
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: '800',
   },
   exportHiddenWrapper: {
@@ -497,12 +591,12 @@ const styles = StyleSheet.create({
   },
   exportProgressLabel: {
     color: '#30383b',
-    fontSize: 12,
+    fontSize: 10,
     fontWeight: '700',
   },
   exportProgressPercent: {
     color: '#2a3133',
-    fontSize: 12,
+    fontSize: 10,
     fontWeight: '800',
   },
   exportProgressTrack: {
@@ -525,11 +619,11 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     borderWidth: 1,
     borderColor: '#c7c2bc',
-    paddingHorizontal: 14,
-    paddingVertical: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
   },
   dropdownButtonText: {
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: '600',
     color: '#2f3638',
     flex: 1,
@@ -558,13 +652,52 @@ const styles = StyleSheet.create({
     borderBottomColor: '#1a1a1a',
   },
   dropdownMenuItemText: {
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: '600',
     color: '#2f3638',
     textAlign: 'center',
   },
   dropdownMenuItemTextSelected: {
     color: '#f3f2ef',
+  },
+  libraryModalOuter: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 24,
+  },
+  libraryModalDim: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(31, 37, 39, 0.45)',
+  },
+  libraryModalCard: {
+    width: '100%',
+    maxWidth: 340,
+    backgroundColor: '#f9f8f6',
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: '#dbd7d1',
+    paddingHorizontal: 18,
+    paddingVertical: 20,
+    gap: 12,
+    zIndex: 2,
+    elevation: 12,
+  },
+  libraryModalTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#1f2527',
+    letterSpacing: 0.2,
+  },
+  libraryModalMessage: {
+    fontSize: 13,
+    color: '#626a6e',
+    lineHeight: 18,
+  },
+  libraryModalActions: {
+    flexDirection: 'row',
+    gap: 10,
+    marginTop: 4,
   },
 });
 

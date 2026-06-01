@@ -1,0 +1,10 @@
+# Copia este archivo a: android/local.properties
+# (después de npm run prebuild:android)
+#
+# Sustituye la ruta por la de TU equipo. En Android Studio:
+#   File → Settings → Languages & Frameworks → Android SDK
+#   copia el valor de "Android SDK location".
+#
+# En Windows puedes usar barras normales (/) así:
+
+sdk.dir=C:/Users/TU_USUARIO/AppData/Local/Android/Sdk

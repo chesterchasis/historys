@@ -1,5 +1,5 @@
 import { StatusBar } from 'expo-status-bar';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ResizeMode, Video } from 'expo-av';
 import * as ImagePicker from 'expo-image-picker';
 import * as MediaLibrary from 'expo-media-library';
@@ -15,6 +15,7 @@ import {
   Pressable,
   SafeAreaView,
   ScrollView,
+  StyleSheet,
   Text,
   View,
 } from 'react-native';
@@ -38,6 +39,12 @@ import {
 } from './src/utils/collageExport';
 import { clamp } from './src/utils/collageMath';
 
+const EMPTY_SLOTS: Record<string, SlotMedia> = {
+  'slot-1': { kind: 'empty' },
+  'slot-2': { kind: 'empty' },
+  'slot-3': { kind: 'empty' },
+};
+
 export default function App() {
   const [layout, setLayout] = useState<LayoutType>('three-horizontal');
   const [borderMode, setBorderMode] = useState<BorderMode>('black');
@@ -50,20 +57,37 @@ export default function App() {
   const [previewSession, setPreviewSession] = useState(0);
   const [editingSlotId, setEditingSlotId] = useState<string | null>(null);
   const [editingSlotStyle, setEditingSlotStyle] = useState<SlotStyle>('vertical');
+  const [libraryDialog, setLibraryDialog] = useState<
+    { kind: 'closed' } | { kind: 'confirm'; slotId: string } | { kind: 'denied' }
+  >({ kind: 'closed' });
+  const [resetDialog, setResetDialog] = useState<
+    { kind: 'closed' } | { kind: 'empty' } | { kind: 'confirm' }
+  >({ kind: 'closed' });
+  const [feedbackDialog, setFeedbackDialog] = useState<
+    | { kind: 'closed' }
+    | { kind: 'notice'; title: string; body: string; confirmLabel: string }
+  >({ kind: 'closed' });
   const [isLayoutDropdownOpen, setIsLayoutDropdownOpen] = useState(false);
+  const [infoModalVisible, setInfoModalVisible] = useState(false);
   const [draftTransform, setDraftTransform] = useState<PhotoTransform>({
     scale: 1,
     translateX: 0,
     translateY: 0,
   });
-  const [slots, setSlots] = useState<Record<string, SlotMedia>>({
-    'slot-1': { kind: 'empty' },
-    'slot-2': { kind: 'empty' },
-    'slot-3': { kind: 'empty' },
-  });
+  const [slots, setSlots] = useState<Record<string, SlotMedia>>({ ...EMPTY_SLOTS });
 
   const activeSlots = useMemo(() => LAYOUT_SPECS[layout], [layout]);
   const hasBlackBorders = borderMode === 'black';
+
+  const resetCollage = useCallback(() => {
+    setSlots({ ...EMPTY_SLOTS });
+    setDuration(10);
+    setEditingSlotId(null);
+    setIsPreviewOpen(false);
+    setLibraryDialog({ kind: 'closed' });
+    setResetDialog({ kind: 'closed' });
+    setFeedbackDialog({ kind: 'closed' });
+  }, []);
 
   const panStartRef = useRef({ x: 0, y: 0 });
   const pinchStartDistanceRef = useRef<number | null>(null);
@@ -166,6 +190,20 @@ export default function App() {
   ).current;
 
   const filledCount = activeSlots.filter((slot) => slots[slot.id]?.kind !== 'empty').length;
+
+  const onRequestResetCollage = () => {
+    if (filledCount === 0) {
+      setResetDialog({ kind: 'empty' });
+      return;
+    }
+    setResetDialog({ kind: 'confirm' });
+  };
+
+  const onConfirmResetCollage = () => {
+    resetCollage();
+  };
+
+  const emptySlotCount = activeSlots.length - filledCount;
   const dropdownHeight = dropdownAnimation.interpolate({
     inputRange: [0, 1],
     outputRange: [0, 156],
@@ -202,15 +240,11 @@ export default function App() {
     };
   }, [isPreviewOpen, duration, previewSession]);
 
-  const pickMediaForSlot = async (slotId: string) => {
+  const pickMediaForSlot = async (slotId: string): Promise<'picked' | 'denied' | 'canceled'> => {
     const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
 
     if (!permission.granted) {
-      Alert.alert(
-        'Permiso necesario',
-        'Necesitamos acceso a tu librería para cargar fotos y videos.'
-      );
-      return;
+      return 'denied';
     }
 
     const result = await ImagePicker.launchImageLibraryAsync({
@@ -220,7 +254,7 @@ export default function App() {
       allowsMultipleSelection: false,
     });
 
-    if (result.canceled || !result.assets?.[0]) return;
+    if (result.canceled || !result.assets?.[0]) return 'canceled';
 
     const asset = result.assets[0];
     const kind: MediaType = asset.type === 'video' ? 'video' : 'photo';
@@ -247,24 +281,26 @@ export default function App() {
         muted: kind === 'video' ? prev[slotId]?.muted ?? false : undefined,
       },
     }));
+    return 'picked';
   };
 
   const onPressLoadSlot = (slotId: string) => {
-    Alert.alert(
-      'Acceder a librería',
-      '¿Quieres permitir acceso a la librería para cargar foto o video?',
-      [
-        { text: 'Cancelar', style: 'cancel' },
-        {
-          text: 'Continuar',
-          onPress: () => {
-            pickMediaForSlot(slotId).catch(() => {
-              Alert.alert('Error', 'No se pudo abrir la librería. Intenta nuevamente.');
-            });
-          },
-        },
-      ]
-    );
+    setLibraryDialog({ kind: 'confirm', slotId });
+  };
+
+  const onConfirmLibraryAccess = () => {
+    if (libraryDialog.kind !== 'confirm') return;
+    const { slotId } = libraryDialog;
+    setLibraryDialog({ kind: 'closed' });
+    pickMediaForSlot(slotId)
+      .then((outcome) => {
+        if (outcome === 'denied') {
+          setLibraryDialog({ kind: 'denied' });
+        }
+      })
+      .catch(() => {
+        Alert.alert('Error', 'No se pudo abrir la librería. Intenta nuevamente.');
+      });
   };
 
   const onClearSlot = (slotId: string) => {
@@ -362,7 +398,20 @@ export default function App() {
         });
         setExportStatus('Guardando video en galería...');
         updateExportProgress(1);
-        Alert.alert('Exportación completada', 'Tu collage en video se guardó en la galería.');
+        const videoLines = [
+          emptySlotCount > 0
+            ? 'El video se guardó en la galería (álbum Historys). Los huecos vacíos salieron en negro.'
+            : 'El video se guardó en la galería (álbum Historys).',
+          '',
+          'El lienzo se vació solo: ya puedes cargar material para otro collage.',
+        ];
+        resetCollage();
+        setFeedbackDialog({
+          kind: 'notice',
+          title: 'Exportación completada',
+          body: videoLines.join('\n'),
+          confirmLabel: 'Genial',
+        });
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : '';
         console.error('Video export failed', error);
@@ -382,12 +431,21 @@ export default function App() {
         await exportAsImageFallback({ exportCanvasRef });
         setExportStatus('Guardando imagen en galería...');
         updateExportProgress(1);
-        Alert.alert(
-          'Exportación parcial',
-          errorMessage
-            ? `No se pudo exportar video. ${errorMessage}. Se guardó una imagen del collage.`
-            : 'No se pudo exportar video en este entorno. Se guardó una imagen del collage.'
-        );
+        const fallbackBase = errorMessage
+          ? `No se pudo exportar video. ${errorMessage}. Se guardó una imagen del collage.`
+          : 'No se pudo exportar video en este entorno. Se guardó una imagen del collage.';
+        const imageLines = [
+          emptySlotCount > 0 ? `${fallbackBase} Los huecos vacíos salieron en negro.` : fallbackBase,
+          '',
+          'El lienzo se vació solo: listo para otro collage.',
+        ];
+        resetCollage();
+        setFeedbackDialog({
+          kind: 'notice',
+          title: 'Exportación parcial',
+          body: imageLines.join('\n'),
+          confirmLabel: 'Entendido',
+        });
       }
     } catch {
       Alert.alert('Error de exportación', 'No se pudo exportar el collage. Intenta nuevamente.');
@@ -405,6 +463,9 @@ export default function App() {
     const hasPreview = Boolean(slotMedia.previewUri);
     const transform = getSlotTransform(slot.id);
 
+    const actionsLayout =
+      slot.style === 'vertical' ? styles.slotActionsColumn : styles.slotActionsRow;
+
     return (
       <View
         key={slot.id}
@@ -415,71 +476,83 @@ export default function App() {
           media !== 'empty' && styles.slotFilled,
         ]}
       >
-        {media === 'photo' && slotMedia.uri && (
-          <Image
-            source={{ uri: slotMedia.uri }}
-            resizeMode="contain"
-            style={[
-              styles.slotPreviewImage,
-              {
-                transform: [
-                  { scale: transform.scale },
-                  { translateX: transform.translateX },
-                  { translateY: transform.translateY },
-                ],
-              },
-            ]}
-          />
-        )}
+        <View style={styles.slotPreviewBlock}>
+          {media === 'photo' && slotMedia.uri && (
+            <Image
+              source={{ uri: slotMedia.uri }}
+              resizeMode="contain"
+              style={[
+                styles.slotPreviewImage,
+                {
+                  transform: [
+                    { scale: transform.scale },
+                    { translateX: transform.translateX },
+                    { translateY: transform.translateY },
+                  ],
+                },
+              ]}
+            />
+          )}
 
-        {media === 'video' && hasPreview && (
-          <Image source={{ uri: slotMedia.previewUri }} resizeMode="contain" style={styles.slotPreviewImage} />
-        )}
+          {media === 'video' && hasPreview && (
+            <Image source={{ uri: slotMedia.previewUri }} resizeMode="contain" style={styles.slotPreviewImage} />
+          )}
 
-        {media === 'video' && (
-          <View style={styles.videoBadge}>
-            <Text style={styles.videoBadgeText}>VIDEO</Text>
+          {media === 'video' && (
+            <View style={styles.videoBadge}>
+              <Text style={styles.videoBadgeText}>VIDEO</Text>
+            </View>
+          )}
+        </View>
+
+        <View style={styles.slotFooter}>
+          <View style={styles.slotMetaRow}>
+            <Text style={styles.slotTitle} numberOfLines={1}>
+              {slot.id.toUpperCase()}
+            </Text>
+            <Text style={styles.slotType} numberOfLines={1}>
+              {typeLabel}
+            </Text>
+            <Text style={styles.slotHint} numberOfLines={media === 'empty' ? 2 : 1}>
+              {media === 'empty' ? 'Sin contenido cargado' : 'Desde librería'}
+            </Text>
           </View>
-        )}
 
-        <Text style={styles.slotTitle}>{slot.id.toUpperCase()}</Text>
-        <Text style={styles.slotType}>{typeLabel}</Text>
-        <Text style={styles.slotHint}>
-          {media === 'empty' ? 'Sin contenido cargado' : 'Contenido cargado desde librería'}
-        </Text>
-
-        <View style={styles.slotActions}>
-          <Pressable style={styles.slotButton} onPress={() => onPressLoadSlot(slot.id)}>
-            <Text style={styles.slotButtonText}>{media === 'empty' ? 'Cargar' : 'Reemplazar'}</Text>
-          </Pressable>
-          {media === 'photo' && (
-            <Pressable style={styles.slotButtonGhost} onPress={() => onOpenPhotoEditor(slot.id)}>
-              <Text style={styles.slotButtonGhostText}>Ajustar</Text>
+          <View style={[styles.slotActions, actionsLayout]}>
+            <Pressable style={styles.slotButton} onPress={() => onPressLoadSlot(slot.id)}>
+              <Text style={styles.slotButtonText}>{media === 'empty' ? 'Cargar' : 'Reemplazar'}</Text>
             </Pressable>
-          )}
-          {media === 'video' && (
-            <Pressable style={styles.slotButtonGhost} onPress={() => onOpenPhotoEditor(slot.id)}>
-              <Text style={styles.slotButtonGhostText}>Ajustar</Text>
-            </Pressable>
-          )}
-          {media === 'video' && (
-            <Pressable 
-              style={[styles.slotButtonGhost, slotMedia.muted && styles.slotButtonGhostMuted]}
-              onPress={() => setSlots((prev) => ({
-                ...prev,
-                [slot.id]: { ...prev[slot.id], muted: !prev[slot.id]?.muted },
-              }))}
-            >
-              <Text style={styles.slotButtonGhostText}>
-                {slotMedia.muted ? '🔇 Silenciado' : '🔊 Sonido'}
-              </Text>
-            </Pressable>
-          )}
-          {media !== 'empty' && (
-            <Pressable style={styles.slotButtonGhost} onPress={() => onClearSlot(slot.id)}>
-              <Text style={styles.slotButtonGhostText}>Quitar</Text>
-            </Pressable>
-          )}
+            {media === 'photo' && (
+              <Pressable style={styles.slotButtonGhost} onPress={() => onOpenPhotoEditor(slot.id)}>
+                <Text style={styles.slotButtonGhostText}>Ajustar</Text>
+              </Pressable>
+            )}
+            {media === 'video' && (
+              <Pressable style={styles.slotButtonGhost} onPress={() => onOpenPhotoEditor(slot.id)}>
+                <Text style={styles.slotButtonGhostText}>Ajustar</Text>
+              </Pressable>
+            )}
+            {media === 'video' && (
+              <Pressable
+                style={[styles.slotButtonGhost, slotMedia.muted && styles.slotButtonGhostMuted]}
+                onPress={() =>
+                  setSlots((prev) => ({
+                    ...prev,
+                    [slot.id]: { ...prev[slot.id], muted: !prev[slot.id]?.muted },
+                  }))
+                }
+              >
+                <Text style={styles.slotButtonGhostText}>
+                  {slotMedia.muted ? 'Silencio' : 'Audio'}
+                </Text>
+              </Pressable>
+            )}
+            {media !== 'empty' && (
+              <Pressable style={styles.slotButtonGhost} onPress={() => onClearSlot(slot.id)}>
+                <Text style={styles.slotButtonGhostText}>Quitar</Text>
+              </Pressable>
+            )}
+          </View>
         </View>
       </View>
     );
@@ -605,7 +678,29 @@ export default function App() {
       <ScrollView contentContainerStyle={styles.container} onScrollBeginDrag={() => setIsLayoutDropdownOpen(false)}>
         <View style={styles.titleRow}>
           <Image source={require('./assets/icon.png')} style={styles.titleIcon} />
-          <Text style={styles.title}>Historys</Text>
+          <View style={styles.titleTextFlex}>
+            <Text style={styles.title}>Historys</Text>
+          </View>
+          <View style={styles.titleToolbar}>
+            <Pressable
+              style={styles.titleToolButton}
+              onPress={() => setInfoModalVisible(true)}
+              hitSlop={8}
+              accessibilityRole="button"
+              accessibilityLabel="Información"
+            >
+              <Text style={styles.titleToolButtonInfo}>i</Text>
+            </Pressable>
+            <Pressable
+              style={[styles.titleToolButton, styles.titleToolButtonFilled]}
+              onPress={onRequestResetCollage}
+              hitSlop={8}
+              accessibilityRole="button"
+              accessibilityLabel="Resetear collage"
+            >
+              <Text style={styles.titleToolButtonReset}>R</Text>
+            </Pressable>
+          </View>
         </View>
 
         <View style={styles.section}>
@@ -757,6 +852,199 @@ export default function App() {
           />
         </View>
       </View>
+
+      <Modal
+        visible={libraryDialog.kind !== 'closed'}
+        animationType="fade"
+        transparent
+        onRequestClose={() => setLibraryDialog({ kind: 'closed' })}
+      >
+        <View style={styles.libraryModalOuter}>
+          <Pressable
+            style={styles.libraryModalDim}
+            accessibilityRole="button"
+            accessibilityLabel="Cerrar"
+            onPress={() => setLibraryDialog({ kind: 'closed' })}
+          />
+          <View style={styles.libraryModalCard}>
+            {libraryDialog.kind === 'confirm' && (
+              <>
+                <Text style={styles.libraryModalTitle}>Acceder a librería</Text>
+                <Text style={styles.libraryModalMessage}>
+                  ¿Quieres permitir acceso a la librería para cargar foto o video?
+                </Text>
+                <View style={styles.libraryModalActions}>
+                  <Pressable
+                    style={[styles.slotButtonGhost, { flex: 1, alignItems: 'center' }]}
+                    onPress={() => setLibraryDialog({ kind: 'closed' })}
+                  >
+                    <Text style={styles.slotButtonGhostText}>Cancelar</Text>
+                  </Pressable>
+                  <Pressable
+                    style={[styles.slotButton, { flex: 1, alignItems: 'center' }]}
+                    onPress={onConfirmLibraryAccess}
+                  >
+                    <Text style={styles.slotButtonText}>Continuar</Text>
+                  </Pressable>
+                </View>
+              </>
+            )}
+            {libraryDialog.kind === 'denied' && (
+              <>
+                <Text style={styles.libraryModalTitle}>Permiso necesario</Text>
+                <Text style={styles.libraryModalMessage}>
+                  Necesitamos acceso a tu librería para cargar fotos y videos. Puedes activarlo en
+                  los ajustes del sistema.
+                </Text>
+                <View style={styles.libraryModalActions}>
+                  <Pressable
+                    style={[styles.slotButton, { flex: 1, alignItems: 'center' }]}
+                    onPress={() => setLibraryDialog({ kind: 'closed' })}
+                  >
+                    <Text style={styles.slotButtonText}>Entendido</Text>
+                  </Pressable>
+                </View>
+              </>
+            )}
+          </View>
+        </View>
+      </Modal>
+
+      <Modal
+        visible={resetDialog.kind !== 'closed'}
+        animationType="fade"
+        transparent
+        onRequestClose={() => setResetDialog({ kind: 'closed' })}
+      >
+        <View style={styles.libraryModalOuter}>
+          <Pressable
+            style={styles.libraryModalDim}
+            accessibilityRole="button"
+            accessibilityLabel="Cerrar"
+            onPress={() => setResetDialog({ kind: 'closed' })}
+          />
+          <View style={styles.libraryModalCard}>
+            {resetDialog.kind === 'empty' && (
+              <>
+                <Text style={styles.libraryModalTitle}>Collage vacío</Text>
+                <Text style={styles.libraryModalMessage}>Todos los slots ya están vacíos.</Text>
+                <View style={styles.libraryModalActions}>
+                  <Pressable
+                    style={[styles.slotButton, { flex: 1, alignItems: 'center' }]}
+                    onPress={() => setResetDialog({ kind: 'closed' })}
+                  >
+                    <Text style={styles.slotButtonText}>Entendido</Text>
+                  </Pressable>
+                </View>
+              </>
+            )}
+            {resetDialog.kind === 'confirm' && (
+              <>
+                <Text style={styles.libraryModalTitle}>Vaciar collage</Text>
+                <Text style={styles.libraryModalMessage}>
+                  Se quitarán las fotos y videos de todos los slots y la duración volverá a 10 s. El estilo del collage
+                  y los bordes no cambian.
+                </Text>
+                <View style={styles.libraryModalActions}>
+                  <Pressable
+                    style={[styles.slotButtonGhost, { flex: 1, alignItems: 'center' }]}
+                    onPress={() => setResetDialog({ kind: 'closed' })}
+                  >
+                    <Text style={styles.slotButtonGhostText}>Cancelar</Text>
+                  </Pressable>
+                  <Pressable
+                    style={[styles.slotButton, { flex: 1, alignItems: 'center' }]}
+                    onPress={onConfirmResetCollage}
+                  >
+                    <Text style={styles.slotButtonText}>Vaciar</Text>
+                  </Pressable>
+                </View>
+              </>
+            )}
+          </View>
+        </View>
+      </Modal>
+
+      <Modal
+        visible={feedbackDialog.kind !== 'closed'}
+        animationType="fade"
+        transparent
+        onRequestClose={() => setFeedbackDialog({ kind: 'closed' })}
+      >
+        <View style={styles.libraryModalOuter}>
+          <Pressable
+            style={styles.libraryModalDim}
+            accessibilityRole="button"
+            accessibilityLabel="Cerrar"
+            onPress={() => setFeedbackDialog({ kind: 'closed' })}
+          />
+          {feedbackDialog.kind === 'notice' && (
+            <View style={styles.libraryModalCard}>
+              <Text style={styles.libraryModalTitle}>{feedbackDialog.title}</Text>
+              <Text style={styles.libraryModalMessage}>{feedbackDialog.body}</Text>
+              <View style={styles.libraryModalActions}>
+                <Pressable
+                  style={[styles.slotButton, { flex: 1, alignItems: 'center' }]}
+                  onPress={() => setFeedbackDialog({ kind: 'closed' })}
+                >
+                  <Text style={styles.slotButtonText}>{feedbackDialog.confirmLabel}</Text>
+                </Pressable>
+              </View>
+            </View>
+          )}
+        </View>
+      </Modal>
+
+      <Modal
+        visible={infoModalVisible}
+        animationType="fade"
+        transparent
+        onRequestClose={() => setInfoModalVisible(false)}
+      >
+        <View style={styles.libraryModalOuter}>
+          <Pressable
+            style={styles.libraryModalDim}
+            accessibilityLabel="Cerrar"
+            onPress={() => setInfoModalVisible(false)}
+          />
+          <View style={[styles.libraryModalCard, styles.infoModalCard]}>
+            <Text style={styles.libraryModalTitle}>Información</Text>
+            <ScrollView style={styles.infoModalScroll} showsVerticalScrollIndicator={false}>
+              <Text style={[styles.infoModalSectionTitle, styles.infoModalSectionTitleFirst]}>
+                Botón R — reset
+              </Text>
+              <Text style={styles.infoModalParagraph}>
+                Vacía los tres slots y deja la duración en 10 s. El estilo del collage (disposición) y los bordes no
+                cambian. Si ya hay fotos o videos cargados, pedirá confirmación para no borrar nada por accidente.
+              </Text>
+              <Text style={styles.infoModalSectionTitle}>Botón i</Text>
+              <Text style={styles.infoModalParagraph}>
+                Abre este panel de ayuda cuando quieras repasar cómo funciona la app.
+              </Text>
+              <Text style={styles.infoModalSectionTitle}>Slots multimedia</Text>
+              <Text style={styles.infoModalParagraph}>
+                No hace falta llenar los tres huecos: los que queden vacíos se ven negros en el preview y en la
+                exportación (vídeo o imagen).
+              </Text>
+              <Text style={styles.infoModalSectionTitle}>Exportar</Text>
+              <Text style={styles.infoModalParagraph}>
+                El vídeo se exporta en Full HD vertical (1080×1920) con H.264 de alta calidad cuando el móvil lo
+                permite; si no, se usa un códec compatible de respaldo. FFmpeg intenta admitir los formatos habituales
+                de galería (según el binario de la app). La orientación de algunos clips depende del decodificador del
+                binario (este build no incluye el filtro lavfi «autorotate»). Cuando la exportación termina bien, el
+                lienzo se vacía solo. La exportación MP4 con FFmpeg no está en Expo Go; si el entorno no puede usar
+                FFmpeg, puede guardarse una imagen del collage.
+              </Text>
+            </ScrollView>
+            <Pressable
+              style={[styles.slotButton, { alignItems: 'center', marginTop: 10 }]}
+              onPress={() => setInfoModalVisible(false)}
+            >
+              <Text style={styles.slotButtonText}>Cerrar</Text>
+            </Pressable>
+          </View>
+        </View>
+      </Modal>
 
       <Modal
         visible={isPreviewOpen}

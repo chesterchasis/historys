@@ -1,6 +1,7 @@
 import Constants, { ExecutionEnvironment } from 'expo-constants';
 import * as FileSystem from 'expo-file-system';
 import * as MediaLibrary from 'expo-media-library';
+import { Platform } from 'react-native';
 import { captureRef } from 'react-native-view-shot';
 import {
   MAX_PHOTO_SCALE,
@@ -40,7 +41,25 @@ type ExportImageOptions = {
 
 const quoteForFfmpeg = (uri: string) => `"${uri.replace(/"/g, '\\"')}"`;
 const toFfmpegPath = (uri: string) => (uri.startsWith('file://') ? uri.replace('file://', '') : uri);
-const VIDEO_CODEC = 'mpeg4';
+
+/** Más tolerante con MP4/MOV raros (cámara, HDR metadata, contenedores largos). */
+const EXPORT_PROBE_ARGS = ['-analyzeduration', '100M', '-probesize', '100M'];
+
+/**
+ * Salida ~Full HD vertical (1080×1920): H.264 por hardware en Android (MediaCodec) o
+ * VideoToolbox en iOS, con bitrate alto. Si no hay encoder nativo, MPEG-4 Part 2 con bitrate alto.
+ * Decodificación: FFmpeg intenta leer la mayoría de códecs que incluya el binario (H.264, HEVC según build).
+ * La rotación por metadatos (p. ej. selfie) depende del decodificador del binario; este build no incluye el filtro lavfi `autorotate`.
+ */
+const getExportVideoEncodingArgs = (): string[] => {
+  if (Platform.OS === 'android') {
+    return ['-c:v', 'h264_mediacodec', '-b:v', '15M', '-maxrate', '18M', '-bufsize', '36M'];
+  }
+  if (Platform.OS === 'ios') {
+    return ['-c:v', 'h264_videotoolbox', '-b:v', '15M', '-allow_sw', '1'];
+  }
+  return ['-c:v', 'mpeg4', '-b:v', '12M'];
+};
 
 export const saveToGallery = async (assetUri: string) => {
   const asset = await MediaLibrary.createAssetAsync(assetUri);
@@ -88,6 +107,10 @@ export const exportVideoWithFfmpeg = async ({
       'EXPO_GO_UNSUPPORTED: La exportación de video usa FFmpeg, un módulo nativo que no está disponible en Expo Go. Crea un development build (npx expo run:android o eas build --profile development) para exportar collages con video.'
     );
   }
+
+  // La exportación a video va solo por FFmpeg: el mismo encaje por slot que el preview
+  // (filter_complex + overlays). Un compositor multi-pista distinto (p. ej. MediaEngine)
+  // no reproducía bien fotos+vídeo ni las posiciones.
 
   let ffmpegModule: any;
   try {
@@ -155,21 +178,20 @@ export const exportVideoWithFfmpeg = async ({
     const sx = offsetX === 0 ? '' : offsetX > 0 ? `-${offsetX}` : `+${Math.abs(offsetX)}`;
     const sy = offsetY === 0 ? '' : offsetY > 0 ? `-${offsetY}` : `+${Math.abs(offsetY)}`;
 
+    // En filter_graph las comas separan opciones: dentro de max()/min() hay que usar \, o FFmpeg
+    // parte mal pad/crop ("Failed to configure input pad", "Error reinitializing filters").
+    const cropXExpr = `max(min((iw-${bounds.width})/2${sx}\\,iw-${bounds.width})\\,0)`;
+    const cropYExpr = `max(min((ih-${bounds.height})/2${sy}\\,ih-${bounds.height})\\,0)`;
+
     filterChains.push(
       `[${inputIndex}:v]` +
-        // 0) Forzamos auto-rotación si el video trae displaymatrix
         `setpts=PTS-STARTPTS,` +
         // 1) Encajar dentro de canvasWxH manteniendo aspect ratio (contain)
         `scale=${canvasWidth}:${canvasHeight}:force_original_aspect_ratio=decrease:flags=bicubic,` +
-        // 2) Pad defensivo: nunca encoger; si tras scale algún lado quedó >= canvas
-        //    por redondeo, usamos max() para evitar el error
-        //    "Padded dimensions cannot be smaller than input dimensions".
-        `pad='max(iw,${canvasWidth})':'max(ih,${canvasHeight})':` +
-        `'(ow-iw)/2':'(oh-ih)/2':color=black,` +
-        // 3) Recortar al tamaño exacto del slot, con offset del usuario
-        `crop=${bounds.width}:${bounds.height}:` +
-        `'max(min((iw-${bounds.width})/2${sx},iw-${bounds.width}),0)':` +
-        `'max(min((ih-${bounds.height})/2${sy},ih-${bounds.height}),0)',` +
+        // 2) Pad defensivo (max con comas escapadas)
+        `pad=max(iw\\,${canvasWidth}):max(ih\\,${canvasHeight}):(ow-iw)/2:(oh-ih)/2:color=black,` +
+        // 3) Recortar al slot con pan del usuario
+        `crop=${bounds.width}:${bounds.height}:${cropXExpr}:${cropYExpr},` +
         `setsar=1,trim=duration=${safeDuration},setpts=PTS-STARTPTS,format=yuv420p[${slotLabel}]`
     );
 
@@ -191,42 +213,63 @@ export const exportVideoWithFfmpeg = async ({
 
   const filterComplex = [...filterChains, ...overlays].join(';');
   const finalLabel = overlayIndex === 0 ? 'base0' : `base${overlayIndex}`;
-  const command = [
-    '-y',
-    ...inputArgs,
-    `-filter_complex "${filterComplex}"`,
-    `-map "[${finalLabel}]"`,
-    ...audioMappings,
-    '-r 30',
-    '-t',
-    `${safeDuration}`,
-    '-c:v',
-    VIDEO_CODEC,
-    '-c:a aac',
-    '-pix_fmt yuv420p',
-    outputPath,
-  ].join(' ');
+  const audioEncodingArgs =
+    audioMappings.length > 0 ? [...audioMappings, '-c:a', 'aac'] : ['-an'];
 
-  const session = await new Promise<any>((resolve, reject) => {
-    FFmpegKit.executeAsync(
-      command,
-      (completedSession: any) => resolve(completedSession),
-      undefined,
-      (statistics: any) => {
-        const renderedMs = typeof statistics?.getTime === 'function' ? Number(statistics.getTime()) : 0;
-        const ratio = clamp(renderedMs / (safeDuration * 1000), 0, 0.98);
-        onProgress?.(ratio);
-      }
-    ).catch(reject);
-  });
+  const buildCommand = (videoEncodeArgs: string[]) =>
+    [
+      '-y',
+      ...EXPORT_PROBE_ARGS,
+      ...inputArgs,
+      `-filter_complex "${filterComplex}"`,
+      `-map "[${finalLabel}]"`,
+      ...audioEncodingArgs,
+      '-r 30',
+      '-t',
+      `${safeDuration}`,
+      ...videoEncodeArgs,
+      '-pix_fmt yuv420p',
+      '-movflags',
+      '+faststart',
+      outputPath,
+    ].join(' ');
 
-  const returnCode = await session.getReturnCode();
+  const runFfmpeg = async (command: string) => {
+    const session = await new Promise<any>((resolve, reject) => {
+      FFmpegKit.executeAsync(
+        command,
+        (completedSession: any) => resolve(completedSession),
+        undefined,
+        (statistics: any) => {
+          const renderedMs = typeof statistics?.getTime === 'function' ? Number(statistics.getTime()) : 0;
+          const ratio = clamp(renderedMs / (safeDuration * 1000), 0, 0.98);
+          onProgress?.(ratio);
+        }
+      ).catch(reject);
+    });
 
-  if (!ReturnCode.isSuccess(returnCode)) {
-    const output = typeof session?.getOutput === 'function' ? await session.getOutput() : '';
-    const failStack =
-      typeof session?.getFailStackTrace === 'function' ? await session.getFailStackTrace() : '';
-    throw new Error(output || failStack || 'FFmpeg export failed');
+    const returnCode = await session.getReturnCode();
+    if (!ReturnCode.isSuccess(returnCode)) {
+      const output = typeof session?.getOutput === 'function' ? await session.getOutput() : '';
+      const failStack =
+        typeof session?.getFailStackTrace === 'function' ? await session.getFailStackTrace() : '';
+      throw new Error(output || failStack || 'FFmpeg export failed');
+    }
+  };
+
+  const primaryEncode = getExportVideoEncodingArgs();
+  try {
+    await runFfmpeg(buildCommand(primaryEncode));
+  } catch (firstErr) {
+    const canTryMpeg4Fallback =
+      (Platform.OS === 'android' && primaryEncode.includes('h264_mediacodec')) ||
+      (Platform.OS === 'ios' && primaryEncode.includes('h264_videotoolbox'));
+    if (canTryMpeg4Fallback) {
+      onProgress?.(0.05);
+      await runFfmpeg(buildCommand(['-c:v', 'mpeg4', '-b:v', '14M']));
+    } else {
+      throw firstErr;
+    }
   }
 
   onProgress?.(1);

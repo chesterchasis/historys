@@ -21,7 +21,9 @@ App movil hecha con Expo para crear collages en formato historia (9:16), combina
 - Preview en tiempo real dentro del collage.
 - Duracion configurable del collage (5s, 10s, 15s, 30s).
 - Exportacion:
-  - Video MP4 en build nativo Android.
+  - Video MP4 en Full HD vertical (1080 x 1920), H.264 por hardware cuando el dispositivo lo permite (MediaCodec / VideoToolbox), bitrate alto y `faststart` para mejor calidad y reproduccion fluida.
+  - Reintento automatico con MPEG-4 de alta calidad si el encoder H.264 por hardware falla (p. ej. algun emulador).
+  - Entradas: FFmpeg intenta decodificar los formatos que incluya el binario; se amplia la sonda de lectura (`-analyzeduration` / `-probesize`) para MP4/MOV raros de galería.
   - Fallback: imagen JPG si no hay soporte nativo de FFmpeg.
   - Audio original de videos (con opcion de silenciar por video).
 - Guardado en galeria en album "Historys".
@@ -43,7 +45,7 @@ App movil hecha con Expo para crear collages en formato historia (9:16), combina
 
 - Node.js 18+ recomendado.
 - npm.
-- Android Studio y/o dispositivo Android.
+- Android Studio y/o dispositivo Android (para build nativo con FFmpeg, ver [docs/ANDROID_STUDIO.md](docs/ANDROID_STUDIO.md)).
 
 ## Instalacion
 
@@ -59,11 +61,123 @@ npm install
 npm start
 ```
 
-3. Abrir en Android:
+3. Abrir en Android (desarrollo rápido, genera `android/` si falta):
 
 ```bash
 npm run android
 ```
+
+4. Solo generar el proyecto nativo **Android** para abrirlo en Android Studio (sin compilar):
+
+```bash
+npm run prebuild:android
+```
+
+Luego abre la carpeta `android/` en Android Studio. Guía detallada: [docs/ANDROID_STUDIO.md](docs/ANDROID_STUDIO.md).
+
+## Android SDK y `local.properties`
+
+Gradle (y por tanto `gradlew assembleRelease`) necesita saber **dónde está instalado el Android SDK**. Eso se indica de dos formas habituales; con **una** basta.
+
+### Por qué falla a veces
+
+Si ejecutas `./gradlew` o `.\gradlew.bat` **solo desde la terminal** sin haber abierto antes el proyecto en Android Studio, puede **no existir** el archivo `android/local.properties`. Entonces aparece un error del tipo:
+
+`SDK location not found. Define ANDROID_HOME or sdk.dir in local.properties`
+
+Android Studio, al hacer **Gradle Sync**, suele **crear solo** ese archivo. Por eso mucha gente no lo ve hasta que compila solo por consola.
+
+### Opción A: archivo `android/local.properties` (recomendado)
+
+1. Genera la carpeta nativa si hace falta: `npm run prebuild:android`.
+2. Averigua la ruta real del SDK en tu PC:
+   - Abre **Android Studio** → **File** (o **Android Studio** en macOS) → **Settings** → **Languages & Frameworks** → **Android SDK**.
+   - Copia el valor de **Android SDK location** (ejemplo en Windows: `C:\Users\tu_usuario\AppData\Local\Android\Sdk`).
+3. Crea el archivo **`android/local.properties`** en la raíz de la carpeta `android/` (al mismo nivel que `build.gradle`, `settings.gradle`, etc.), con **exactamente una línea activa**:
+
+```properties
+sdk.dir=C:/Users/tu_usuario/AppData/Local/Android/Sdk
+```
+
+**Detalles importantes:**
+
+- Sustituye `tu_usuario` (y la ruta completa) por la que te muestre Android Studio.
+- En Windows puedes usar **barras normales** `/` como en el ejemplo; Gradle las acepta y evitas escapar `\`.
+- En macOS la ruta suele ser del estilo `/Users/tu_usuario/Library/Android/sdk`.
+- No pongas comillas alrededor de la ruta.
+- Si en el futuro ejecutas `npm run prebuild:android:clean`, se **borra** la carpeta `android/` entera: tendrás que **volver a crear** `local.properties` (o abrir el proyecto en Android Studio para que lo regenere).
+
+En el repo hay una plantilla vacía de referencia: [docs/local.properties.example](docs/local.properties.example).
+
+### Opción B: variable de entorno `ANDROID_HOME`
+
+Apunta a la **misma** carpeta del SDK (sin `local.properties` o además de ella, según tu entorno).
+
+**PowerShell (solo la ventana actual):**
+
+```powershell
+$env:ANDROID_HOME = "C:\Users\tu_usuario\AppData\Local\Android\Sdk"
+cd android
+.\gradlew.bat assembleRelease
+```
+
+**Windows (fijo para todas las apps):** *Configuración → Sistema → Información → Configuración avanzada del sistema → Variables de entorno* → variable de usuario o del sistema `ANDROID_HOME` = ruta del SDK. Cierra y abre la terminal después.
+
+En algunos equipos también se usa `ANDROID_SDK_ROOT`; para Gradle suele bastar con `ANDROID_HOME`.
+
+### Si aparece «Autolinking is not set up in settings.gradle»
+
+A menudo va ligado a que **antes** falló el SDK o a un `android/` desactualizado. Primero arregla `local.properties` o `ANDROID_HOME`. Si sigue el error, desde la **raíz** del repo:
+
+```bash
+npm run prebuild:android:clean
+```
+
+Vuelve a crear `local.properties` y prueba de nuevo.
+
+## Generar APK
+
+Antes necesitas la carpeta nativa: `npm run prebuild:android` (si aún no existe `android/`). Si compilas con **Gradle por terminal**, revisa la sección **Android SDK y `local.properties`** más arriba.
+
+### Desde Android Studio (menú)
+
+1. Abre el proyecto en la carpeta **`android/`**.
+2. **Build → Build Bundle(s) / APK(s) → Build APK(s)**.
+3. Al terminar, usa el enlace **locate** para abrir la carpeta del APK.
+
+El APK de release sin firma de Play suele quedar en:
+
+`android/app/build/outputs/apk/release/app-release.apk`
+
+Para **subir a Google Play** conviene el **AAB**: **Build → Generate Signed Bundle / APK…** y elige **Android App Bundle** (requiere configurar el keystore en el asistente).
+
+### Desde terminal (Gradle)
+
+Desde la carpeta **`android/`** del proyecto:
+
+**Windows (PowerShell o CMD):**
+
+```bash
+.\gradlew.bat assembleRelease
+```
+
+**macOS / Linux:**
+
+```bash
+./gradlew assembleRelease
+```
+
+Salida típica del APK: `android/app/build/outputs/apk/release/app-release.apk`.
+
+Para una build de prueba rápida (debug):
+
+```bash
+.\gradlew.bat assembleDebug
+```
+
+(En macOS/Linux: `./gradlew assembleDebug`.)
+
+Más contexto y capturas de menú: [docs/ANDROID_STUDIO.md](docs/ANDROID_STUDIO.md).
 
 ## Uso rapido
 
@@ -77,11 +191,11 @@ npm run android
 
 ## Exportacion de video: nota importante
 
-La exportacion a video usa FFmpegKit (modulo nativo). Por eso:
+La exportacion a MP4 usa **FFmpegKit** (`filter_complex` con la misma rejilla de slots que el preview: fotos, videos, zoom y desplazamiento).
 
-- En Expo Go puede no estar disponible la exportacion MP4.
+- En Expo Go no hay exportacion MP4 (FFmpeg no va en el cliente de tienda).
 - En ese caso, la app aplica fallback automatico y exporta imagen.
-- En builds nativos la exportacion MP4 esta preparada para conservar audio de videos no silenciados.
+- En builds nativos se conserva audio de videos no silenciados.
 
 Para exportar video de forma consistente, usar Development Build:
 
@@ -106,7 +220,7 @@ La app solicita permisos para:
 
 - Flujo funcional para crear collages 9:16 con fotos y videos.
 - Preview funcional con reproduccion en tiempo real.
-- Exportacion funcional a MP4 en build nativo Android, con fallback a imagen cuando el entorno no soporta FFmpeg.
+- Exportacion funcional a MP4 en build nativo Android (FFmpeg), con fallback a imagen cuando el entorno no soporta el modulo nativo.
 - Exportacion con audio original y control de silencio por video (por slot).
 - UI en espanol, compacta y optimizada para mobile.
 - Ajuste visual del encabezado para respetar mejor el borde superior del telefono.
