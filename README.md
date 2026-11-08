@@ -1,272 +1,165 @@
+<div align="center">
+
+<img src="assets/icon.png" alt="Historys Icon" width="110" />
+
 # Historys
 
-Version actual: v1.0.6
+**Creador de collages 9:16 de fotos y vídeos en Full HD para Android e iOS**
 
-App movil hecha con Expo para crear collages en formato historia (9:16), combinando fotos y videos en distintos layouts.
+[![Version](https://img.shields.io/badge/versión-1.0.9-2f3638?style=flat-square)](package.json)
+[![Expo SDK](https://img.shields.io/badge/Expo_SDK-54-4630EB?style=flat-square&logo=expo)](https://expo.dev)
+[![React Native](https://img.shields.io/badge/React_Native-0.81.5-61DAFB?style=flat-square&logo=react)](https://reactnative.dev)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5.9-3178C6?style=flat-square&logo=typescript)](tsconfig.json)
+[![FFmpeg](https://img.shields.io/badge/FFmpeg-H.264_%2F_AAC-007808?style=flat-square)](src/utils/collageExport.ts)
 
-## Caracteristicas
+</div>
 
-- Formato historia de Instagram: 1080 x 1920 (9:16).
-- Slots multimedia (foto o video) en varios estilos de collage.
-- Selector de estilos:
-  - 3 slots horizontales.
-  - 2 verticales + 1 horizontal.
-  - 1 horizontal + 2 verticales.
-- Estilo visual de bordes:
-  - Con bordes.
-  - Sin bordes.
-- Ajuste de foto por slot:
-  - Zoom con pinza o botones +/-.
-  - Desplazamiento libre (pan) para encuadrar.
-- Preview en tiempo real dentro del collage.
-- Duracion configurable del collage (5s, 10s, 15s, 30s).
-- Exportacion:
-  - Video MP4 en Full HD vertical (1080 x 1920), H.264 por hardware cuando el dispositivo lo permite (MediaCodec / VideoToolbox), bitrate alto y `faststart` para mejor calidad y reproduccion fluida.
-  - Reintento automatico con MPEG-4 de alta calidad si el encoder H.264 por hardware falla (p. ej. algun emulador).
-  - Entradas: FFmpeg intenta decodificar los formatos que incluya el binario; se amplia la sonda de lectura (`-analyzeduration` / `-probesize`) para MP4/MOV raros de galería.
-  - Fallback: imagen JPG si no hay soporte nativo de FFmpeg.
-  - Audio original de videos (con opcion de silenciar por video).
-- Guardado en galeria en album "Historys".
+---
 
-## Stack tecnico
+**Historys** es una aplicación móvil desarrollada con **Expo (SDK 54)** y **React Native** que permite combinar fotos y vídeos en un único lienzo vertical **9:16 (`1080 × 1920`)**, pensado para **Instagram Stories, TikTok y WhatsApp Status**.
 
-- Expo SDK 54
-- React Native
-- TypeScript
-- expo-image-picker
-- expo-video-thumbnails
-- expo-av
-- expo-media-library
-- react-native-view-shot
-- @wokcito/ffmpeg-kit-react-native
-- expo-file-system
+La interfaz, la vista previa a pantalla completa y el motor de renderizado en **FFmpeg** comparten exactamente la misma geometría de recorte: **lo que encuadras en pantalla es lo que sale en el archivo MP4**.
 
-## Requisitos
+---
 
-- Node.js 18+ recomendado.
-- npm.
-- Android Studio y/o dispositivo Android (para build nativo con FFmpeg, ver [docs/ANDROID_STUDIO.md](docs/ANDROID_STUDIO.md)).
+## Características principales
 
-## Instalacion
+| Categoría | Detalle |
+| :--- | :--- |
+| **Lienzo 9:16 real** | Salida nativa en **Full HD (`1080 × 1920` a 30 fps)** con opción **Con bordes** (`24 px` de margen y separación) o **Sin bordes**. |
+| **3 diseños visuales** | Selector gráfico en miniatura (**`3 bandas`**, **`2+1`** y **`1+2`**). Al cambiar de diseño se conservan los archivos ya cargados en cada hueco. |
+| **Encuadre unificado** | Editor con la proporción exacta del hueco elegido, zoom con pinza o botones (`100 % – 400 %`) y desplazamiento normalizado idéntico en miniatura, preview y MP4. |
+| **Corrección de cámara** | Lectura previa con `ffprobe` (`displaymatrix` y metadato `rotate`) para enderezar automáticamente vídeos verticales sin girar las fotografías. |
+| **Mezcla de audio AAC** | Control individual **Audio / Silencio** por cada vídeo y mezcla automática (`amix`) en una sola pista estéreo AAC (`44.1 kHz`). Los vídeos sin pista de audio no interrumpen el render. |
+| **Selector de calidad** | Tres niveles sobre resolución 1080p: **Baja** (`6 Mbps`), **Media** (`15 Mbps`, por defecto) y **Alta** (`28 Mbps`), con cadena `h264_mediacodec` / `h264_videotoolbox` → `libx264` → `mpeg4`. |
+| **Flujo no destructivo** | Al exportar, el archivo se guarda en el álbum **`Historys`** de la galería y el collage permanece cargado en pantalla para seguir editando o crear uno nuevo bajo confirmación. |
 
-1. Instalar dependencias:
+---
+
+## Cómo funciona la app
+
+1. **Elige la forma y los bordes:** toca una de las tres miniaturas (`3 bandas`, `2+1` o `1+2`) y alterna entre `Con bordes` o `Sin bordes`.
+2. **Toca cualquier hueco del marco 9:16:** debajo se despliega la barra contextual para ese hueco (`Cargar`, `Ajustar`, `Audio / Silencio` y `Quitar`). Los huecos que dejes vacíos se renderizan en negro puro.
+3. **Ajusta duración y calidad:** elige entre `5s`, `10s`, `15s` o `30s` y la tasa de bits (`Baja`, `Media` o `Alta`).
+4. **Previsualiza o exporta:** abre `Preview` a pantalla completa con cuenta atrás en tiempo real o pulsa `Exportar` para generar el MP4 en el álbum **Historys**.
+
+---
+
+## Stack técnico
+
+- **Core:** [Expo SDK 54](https://docs.expo.dev/) · [React Native 0.81.5](https://reactnative.dev/) · [React 19](https://react.dev/) · TypeScript (`strict`).
+- **Vídeo y procesamiento:** [`@wokcito/ffmpeg-kit-react-native`](https://github.com/wokcito/ffmpeg-kit-react-native) (`FFmpegKit` + `FFprobeKit`), `expo-av`, `expo-video-thumbnails`.
+- **Sistema y galería:** `expo-image-picker`, `expo-media-library`, `expo-file-system`, `react-native-view-shot`, `react-native-safe-area-context`.
+
+---
+
+## Estructura del proyecto
+
+```text
+historys/
+├── App.tsx                        # Pantalla principal, modales (Preview, Editor, Listo, Ayuda)
+├── app.json                       # Configuración de Expo, permisos, Android SDK 35 e iOS bundleId
+├── src/
+│   ├── components/
+│   │   ├── CollageLayout.tsx      # Lienzo 9:16 escalado desde getSlotBoundsMap
+│   │   ├── FramedMedia.tsx        # Renderizado unificado de foto/vídeo con recorte y giro
+│   │   └── LayoutThumb.tsx        # Miniaturas 9:16 del selector de diseño
+│   ├── constants/
+│   │   └── collage.ts             # Dimensiones 1080×1920, duraciones, calidades y layouts
+│   ├── styles/
+│   │   └── appStyles.ts           # Sistema de estilos de la interfaz
+│   ├── types/
+│   │   └── collage.ts             # Tipos de slots, transformaciones y geometría
+│   └── utils/
+│       ├── collageExport.ts       # Sonda ffprobe, grafo filter_complex, audio amix y guardado
+│       ├── collageMath.ts         # Geometría única de los huecos (getSlotBoundsMap)
+│       └── frameTransform.ts      # Matemática compartida de escala, pan (-1..1) y rotación
+└── docs/
+    ├── ANDROID_STUDIO.md          # Guía paso a paso para compilar con Android Studio / Gradle
+    ├── CHECKS.md                  # Lista de verificación en dispositivo físico
+    └── plan-10-fases.pdf          # Documento de diseño y arquitectura de las 10 fases
+```
+
+---
+
+## Instalación y desarrollo
+
+### Requisitos previos
+
+- **Node.js 18+** y `npm`.
+- **Android Studio** con **Android SDK 35** y **JDK 17** (para compilar el módulo nativo de FFmpeg).
+- Dispositivo físico Android (**API 24+**) o emulador.
+
+> **Nota importante sobre Expo Go:** la exportación de vídeo MP4 utiliza binarios nativos de FFmpeg que **no están incluidos en la app Expo Go** de la tienda. Para exportar vídeo debes usar un **Development Build** o compilar desde Android Studio (`npm run android`).
+
+### 1. Instalar dependencias
 
 ```bash
 npm install
 ```
 
-2. Iniciar proyecto:
+### 2. Compilar e instalar en un móvil conectado por USB
 
 ```bash
-npm start
-```
-
-3. Abrir en Android (desarrollo rápido, genera `android/` si falta):
-
-```bash
+# Genera la carpeta nativa android/ (si no existe), compila el APK e inicia Metro
 npm run android
 ```
 
-4. Solo generar el proyecto nativo **Android** para abrirlo en Android Studio (sin compilar):
+### 3. Abrir el proyecto en Android Studio
+
+Si prefieres compilar y lanzar desde Android Studio:
 
 ```bash
+# 1. Generar la carpeta nativa android/
 npm run prebuild:android
+
+# 2. Arrancar el servidor Metro en la raíz del proyecto
+npm start
 ```
 
-Luego abre la carpeta `android/` en Android Studio. Guía detallada: [docs/ANDROID_STUDIO.md](docs/ANDROID_STUDIO.md).
+Después abre la carpeta **`android/`** en Android Studio (**File → Open**), espera a que termine **Gradle Sync** y pulsa **Run (`▶`)** sobre tu dispositivo conectado. Si el dispositivo por USB no conecta con Metro a la primera, ejecuta en otra terminal:
 
-## Android SDK y `local.properties`
-
-Gradle (y por tanto `gradlew assembleRelease`) necesita saber **dónde está instalado el Android SDK**. Eso se indica de dos formas habituales; con **una** basta.
-
-### Por qué falla a veces
-
-Si ejecutas `./gradlew` o `.\gradlew.bat` **solo desde la terminal** sin haber abierto antes el proyecto en Android Studio, puede **no existir** el archivo `android/local.properties`. Entonces aparece un error del tipo:
-
-`SDK location not found. Define ANDROID_HOME or sdk.dir in local.properties`
-
-Android Studio, al hacer **Gradle Sync**, suele **crear solo** ese archivo. Por eso mucha gente no lo ve hasta que compila solo por consola.
-
-### Opción A: archivo `android/local.properties` (recomendado)
-
-1. Genera la carpeta nativa si hace falta: `npm run prebuild:android`.
-2. Averigua la ruta real del SDK en tu PC:
-   - Abre **Android Studio** → **File** (o **Android Studio** en macOS) → **Settings** → **Languages & Frameworks** → **Android SDK**.
-   - Copia el valor de **Android SDK location** (ejemplo en Windows: `C:\Users\tu_usuario\AppData\Local\Android\Sdk`).
-3. Crea el archivo **`android/local.properties`** en la raíz de la carpeta `android/` (al mismo nivel que `build.gradle`, `settings.gradle`, etc.), con **exactamente una línea activa**:
-
-```properties
-sdk.dir=C:/Users/tu_usuario/AppData/Local/Android/Sdk
+```bash
+adb reverse tcp:8081 tcp:8081
 ```
 
-**Detalles importantes:**
+Tienes la guía detallada de `local.properties`, variables `ANDROID_HOME` y solución de problemas de Gradle en **[`docs/ANDROID_STUDIO.md`](docs/ANDROID_STUDIO.md)**.
 
-- Sustituye `tu_usuario` (y la ruta completa) por la que te muestre Android Studio.
-- En Windows puedes usar **barras normales** `/` como en el ejemplo; Gradle las acepta y evitas escapar `\`.
-- En macOS la ruta suele ser del estilo `/Users/tu_usuario/Library/Android/sdk`.
-- No pongas comillas alrededor de la ruta.
-- Si en el futuro ejecutas `npm run prebuild:android:clean`, se **borra** la carpeta `android/` entera: tendrás que **volver a crear** `local.properties` (o abrir el proyecto en Android Studio para que lo regenere).
+---
 
-En el repo hay una plantilla vacía de referencia: [docs/local.properties.example](docs/local.properties.example).
+## Compilar APK de distribución (Release)
 
-### Opción B: variable de entorno `ANDROID_HOME`
+### Desde Android Studio
+1. Abre la carpeta **`android/`** en Android Studio.
+2. Ve a **Build → Build Bundle(s) / APK(s) → Build APK(s)**.
+3. El APK generado quedará en `android/app/build/outputs/apk/release/app-release.apk`.
 
-Apunta a la **misma** carpeta del SDK (sin `local.properties` o además de ella, según tu entorno).
-
-**PowerShell (solo la ventana actual):**
+### Desde la terminal (Gradle)
 
 ```powershell
-$env:ANDROID_HOME = "C:\Users\tu_usuario\AppData\Local\Android\Sdk"
+# Windows (PowerShell)
 cd android
 .\gradlew.bat assembleRelease
 ```
 
-**Windows (fijo para todas las apps):** *Configuración → Sistema → Información → Configuración avanzada del sistema → Variables de entorno* → variable de usuario o del sistema `ANDROID_HOME` = ruta del SDK. Cierra y abre la terminal después.
-
-En algunos equipos también se usa `ANDROID_SDK_ROOT`; para Gradle suele bastar con `ANDROID_HOME`.
-
-### Si aparece «Autolinking is not set up in settings.gradle»
-
-A menudo va ligado a que **antes** falló el SDK o a un `android/` desactualizado. Primero arregla `local.properties` o `ANDROID_HOME`. Si sigue el error, desde la **raíz** del repo:
-
 ```bash
-npm run prebuild:android:clean
-```
-
-Vuelve a crear `local.properties` y prueba de nuevo.
-
-## Generar APK
-
-Antes necesitas la carpeta nativa: `npm run prebuild:android` (si aún no existe `android/`). Si compilas con **Gradle por terminal**, revisa la sección **Android SDK y `local.properties`** más arriba.
-
-### Desde Android Studio (menú)
-
-1. Abre el proyecto en la carpeta **`android/`**.
-2. **Build → Build Bundle(s) / APK(s) → Build APK(s)**.
-3. Al terminar, usa el enlace **locate** para abrir la carpeta del APK.
-
-El APK de release sin firma de Play suele quedar en:
-
-`android/app/build/outputs/apk/release/app-release.apk`
-
-Para **subir a Google Play** conviene el **AAB**: **Build → Generate Signed Bundle / APK…** y elige **Android App Bundle** (requiere configurar el keystore en el asistente).
-
-### Desde terminal (Gradle)
-
-Desde la carpeta **`android/`** del proyecto:
-
-**Windows (PowerShell o CMD):**
-
-```bash
-.\gradlew.bat assembleRelease
-```
-
-**macOS / Linux:**
-
-```bash
+# macOS / Linux
+cd android
 ./gradlew assembleRelease
 ```
 
-Salida típica del APK: `android/app/build/outputs/apk/release/app-release.apk`.
+---
 
-Para una build de prueba rápida (debug):
+## Novedades en `v1.0.9`
 
-```bash
-.\gradlew.bat assembleDebug
-```
+- **Bloqueo de exportación concurrente** y limpieza garantizada (`try / finally`) de archivos temporales en la caché.
+- **Fondo negro nativo por filtro (`color=`)** dentro de `filter_complex`, sin escribir imágenes temporales en disco.
+- **Adaptación completa a pantallas edge-to-edge** (cámara perforada y barra de gestos de Android 15 / One UI) mediante `react-native-safe-area-context`.
+- **Lienzo 9:16 limpio** con barra de acciones contextual fuera del marco.
+- **Matemática de encuadre única (`placedMediaRect`)** compartida entre el editor, las miniaturas, el preview y el `crop` de FFmpeg.
+- **Enderezado automático de vídeos verticales** mediante `ffprobe` (`transpose` / `hflip,vflip`) con indicador `Corregido`.
+- **Mezcla de audio (`amix`)** en una única pista AAC estéreo cuando coinciden varios vídeos con sonido.
+- **Selector de calidad (`Baja`, `Media`, `Alta`)** con respaldo `libx264` antes de `mpeg4` y verificación del códec final con `ffprobe`.
+- **Selector visual de diseño en miniatura** (`3 bandas`, `2+1`, `1+2`) y hoja final **«Listo»** que conserva el trabajo en pantalla.
 
-(En macOS/Linux: `./gradlew assembleDebug`.)
-
-Más contexto y capturas de menú: [docs/ANDROID_STUDIO.md](docs/ANDROID_STUDIO.md).
-
-## Uso rapido
-
-1. Elige el estilo del collage.
-2. Elige si quieres bordes o sin bordes.
-3. Carga fotos y/o videos en los slots.
-4. En fotos, pulsa "Ajustar" para encuadrar (zoom y desplazamiento).
-5. Define la duracion.
-6. Pulsa "Preview" para previsualizar.
-7. Pulsa "Exportar" para guardar en galeria.
-
-## Exportacion de video: nota importante
-
-La exportacion a MP4 usa **FFmpegKit** (`filter_complex` con la misma rejilla de slots que el preview: fotos, videos, zoom y desplazamiento).
-
-- En Expo Go no hay exportacion MP4 (FFmpeg no va en el cliente de tienda).
-- En ese caso, la app aplica fallback automatico y exporta imagen.
-- En builds nativos se conserva audio de videos no silenciados.
-
-Para exportar video de forma consistente, usar Development Build:
-
-```bash
-npx expo run:android
-```
-
-O usar EAS Dev Client.
-
-## Permisos
-
-La app solicita permisos para:
-
-- Leer libreria multimedia (cargar fotos/videos).
-- Escribir en galeria (guardar exportaciones).
-
-## Estructura principal
-
-- App principal: `App.tsx`
-
-## Estado actual
-
-- Flujo funcional para crear collages 9:16 con fotos y videos.
-- Preview funcional con reproduccion en tiempo real.
-- Exportacion funcional a MP4 en build nativo Android (FFmpeg), con fallback a imagen cuando el entorno no soporta el modulo nativo.
-- Exportacion con audio original y control de silencio por video (por slot).
-- UI en espanol, compacta y optimizada para mobile.
-- Ajuste visual del encabezado para respetar mejor el borde superior del telefono.
-
-## Release v1.0.5
-
-- Correccion de exportacion de video para evitar dependencias de codec no soportadas por el paquete FFmpeg instalado.
-- Mejora del manejo de errores de exportacion para mostrar la causa real cuando falle FFmpeg.
-- Mapeo de audio opcional para videos sin pista de audio.
-- Ajuste de espacio superior en el encabezado principal.
-
-## Release v1.0.6
-
-- **CRITICAL FIX**: Reemplazo de generacion de fondo negro mediante `lavfi` (libavfilter) por imagen PNG embedded.
-  - El FFmpeg en el APK no tiene libavfilter compilado, lo que causaba error "Unknown input format: 'lavfi'".
-  - Solucion: La app ahora crea una imagen negra temporal en base64 y la usa como input en lugar de generar color dinamico.
-- Limpieza automatica de archivos temporales (imagen negra) tras exportacion exitosa o error.
-- Mejora de estabilidad de exportacion en diferentes dispositivos Android.
-
-## Proximos pasos sugeridos
-
-- Selector visual de calidad de exportacion (Baja/Media/Alta) con presets de bitrate.
-- Barra de timeline para definir inicio/fin por video y sincronizar mejor el collage.
-- Guardar y cargar plantillas (layout + bordes + duracion + transformaciones).
-- Exportacion directa para redes (Instagram Stories, TikTok, WhatsApp Status) con atajos.
-- Pantalla de onboarding breve con tips de uso para primera ejecucion.
-
-## Diseño del icono (Prompt)
-
-```
-Diseña un icono minimalista y moderno para la app "Historys", 
-una aplicación Android para crear collages en formato vertical (9:16) 
-combinando fotos y videos.
-
-Características del icono:
-- Formato cuadrado (512x512px) con esquinas redondeadas
-- Paleta de colores cálida y moderna: tonos de beige (#e9e5df), gris oscuro (#41484b) y azul suave (#7a9ccc)
-- Centro: 4 marcos superpuestos en disposición de collage (2x2 o 3 capas) 
-  representando fotos y videos entrecruzados
-- Un símbolo de "play" sutil en una esquina para indicar video
-- Movimiento dinámico: líneas o elementos diagonales que sugieran composición en movimiento
-- Fondo: gradiente sutil de beige a blanco
-- Estilo: geométrico, limpio, sin detalles innecesarios
-- Compatible con Light y Dark mode de Android
-```
-
-## Licencia
-
-Pendiente de definir.
+Consulta el detalle visual de cada mejora en **[`docs/plan-10-fases.pdf`](docs/plan-10-fases.pdf)** y la lista de pruebas en **[`docs/CHECKS.md`](docs/CHECKS.md)**.

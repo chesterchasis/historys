@@ -7,8 +7,8 @@ const styles = StyleSheet.create({
   },
   container: {
     paddingHorizontal: 18,
-    paddingTop: 42,
-    paddingBottom: 24,
+    paddingTop: 8,
+    paddingBottom: 16,
     gap: 12,
   },
   titleRow: {
@@ -83,29 +83,141 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   infoModalCard: {
-    maxHeight: '85%',
+    maxHeight: '86%',
     width: '100%',
-    maxWidth: 360,
+    maxWidth: 368,
+    gap: 10,
+  },
+  infoModalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 10,
+  },
+  infoModalSubtitle: {
+    fontSize: 12,
+    color: '#626a6e',
+    marginTop: 2,
+  },
+  infoVersionPill: {
+    backgroundColor: '#eae6de',
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: '#d4cfc6',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+  },
+  infoVersionText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#2f3638',
   },
   infoModalScroll: {
     flexGrow: 0,
-    maxHeight: 420,
-    marginBottom: 4,
+    maxHeight: 430,
   },
-  infoModalSectionTitle: {
+  infoModalScrollContent: {
+    gap: 10,
+    paddingBottom: 4,
+  },
+  infoStepCard: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 10,
+    backgroundColor: '#f2efea',
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#ded9d0',
+    padding: 12,
+  },
+  infoStepBadge: {
+    width: 24,
+    height: 24,
+    borderRadius: 999,
+    backgroundColor: '#2f3638',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 1,
+  },
+  infoStepBadgeText: {
+    color: '#f4f2ee',
+    fontSize: 12,
+    fontWeight: '800',
+  },
+  infoStepBody: {
+    flex: 1,
+    gap: 4,
+  },
+  infoStepTitle: {
     fontSize: 13,
     fontWeight: '700',
+    color: '#1f2527',
+  },
+  infoStepText: {
+    fontSize: 12.5,
+    lineHeight: 18,
+    color: '#525a5e',
+  },
+  infoInlineStrong: {
+    fontWeight: '700',
     color: '#2f3638',
-    marginTop: 12,
-    marginBottom: 6,
   },
-  infoModalSectionTitleFirst: {
-    marginTop: 0,
+  infoTagList: {
+    marginTop: 2,
+    gap: 3,
   },
-  infoModalParagraph: {
-    fontSize: 13,
-    lineHeight: 19,
-    color: '#626a6e',
+  infoTagItem: {
+    fontSize: 12,
+    lineHeight: 17,
+    color: '#525a5e',
+  },
+  infoQuickCard: {
+    backgroundColor: '#ece8e1',
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#dad4ca',
+    padding: 12,
+    gap: 8,
+  },
+  infoQuickTitle: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#2f3638',
+  },
+  infoQuickRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  infoKeyPill: {
+    minWidth: 28,
+    height: 24,
+    borderRadius: 999,
+    backgroundColor: '#2f3638',
+    paddingHorizontal: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  infoKeyPillSoft: {
+    backgroundColor: '#dde7f2',
+    borderWidth: 1,
+    borderColor: '#7a9ccc',
+  },
+  infoKeyPillText: {
+    color: '#f4f2ee',
+    fontSize: 11,
+    fontWeight: '800',
+  },
+  infoKeyPillTextDark: {
+    color: '#2f3638',
+    fontSize: 10.5,
+    fontWeight: '700',
+  },
+  infoQuickText: {
+    flex: 1,
+    fontSize: 12,
+    lineHeight: 16.5,
+    color: '#525a5e',
   },
   chipRow: {
     flexDirection: 'row',
@@ -157,51 +269,82 @@ const styles = StyleSheet.create({
     aspectRatio: 9 / 16,
     alignSelf: 'center',
     overflow: 'hidden',
-  },
-  previewFrameBlackBorders: {
-    borderRadius: 24,
-    borderWidth: 1,
-    borderColor: '#1a1a1a',
     backgroundColor: '#000000',
-    padding: 6,
-  },
-  previewFrameNoBorders: {
-    borderRadius: 0,
-    borderWidth: 0,
-    backgroundColor: '#ece9e4',
-    padding: 0,
   },
   slot: {
-    overflow: 'hidden',
-    alignItems: 'stretch',
-    justifyContent: 'flex-start',
-    backgroundColor: '#f7f5f1',
-    padding: 6,
-    gap: 3,
-  },
-  slotPreviewBlock: {
     flex: 1,
     width: '100%',
-    minHeight: 0,
-    position: 'relative',
-  },
-  slotFooter: {
-    width: '100%',
-    flexShrink: 0,
-    gap: 4,
-    alignItems: 'stretch',
-  },
-  slotMetaRow: {
-    width: '100%',
+    height: '100%',
+    overflow: 'hidden',
     alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#000000',
   },
-  slotWithBlackBorders: {
-    borderRadius: 12,
-    borderWidth: 0,
+  slotEmptyLabel: {
+    color: '#c8c2b8',
+    fontSize: 12,
+    fontWeight: '600',
+    textAlign: 'center',
+    paddingHorizontal: 8,
   },
-  slotWithoutBorders: {
-    borderRadius: 0,
-    borderWidth: 0,
+  slotSelectedRing: {
+    ...StyleSheet.absoluteFillObject,
+    borderWidth: 2,
+    borderColor: '#f3efe8',
+  },
+  slotBar: {
+    marginTop: 10,
+    gap: 8,
+  },
+  slotBarHint: {
+    marginTop: 10,
+    color: '#5e666a',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  mixHint: {
+    marginTop: 8,
+    color: '#3c4447',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  slotBarTitle: {
+    color: '#3c4447',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  slotBarGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  slotBarButton: {
+    flexGrow: 1,
+    flexBasis: '47%',
+    paddingVertical: 12,
+  },
+  layoutRow: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  layoutChoice: {
+    flex: 1,
+    alignItems: 'center',
+    gap: 8,
+    paddingVertical: 10,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#c7c2bc',
+    backgroundColor: '#f2efea',
+  },
+  layoutChoiceSelected: {
+    backgroundColor: '#2f3638',
+    borderColor: '#2f3638',
+  },
+  layoutChoiceLabel: {
+    color: '#4f575b',
+    fontSize: 12,
+    fontWeight: '700',
   },
   slotPreviewImage: {
     ...StyleSheet.absoluteFillObject,
@@ -226,47 +369,25 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     letterSpacing: 0.5,
   },
+  correctedChip: {
+    position: 'absolute',
+    left: 8,
+    bottom: 8,
+    backgroundColor: 'rgba(20, 24, 26, 0.72)',
+    borderRadius: 999,
+    paddingHorizontal: 7,
+    paddingVertical: 3,
+  },
+  correctedChipText: {
+    color: '#f3efe8',
+    fontSize: 9,
+    fontWeight: '700',
+  },
   horizontalSlot: {
     flex: 1,
   },
   verticalSlot: {
     flex: 1,
-  },
-  slotFilled: {
-    borderStyle: 'solid',
-    borderColor: '#677073',
-    backgroundColor: '#d9dee0',
-  },
-  slotTitle: {
-    fontSize: 10,
-    color: '#596165',
-    fontWeight: '700',
-    letterSpacing: 0.6,
-  },
-  slotType: {
-    fontSize: 14,
-    color: '#242c2f',
-    fontWeight: '700',
-  },
-  slotHint: {
-    fontSize: 10,
-    color: '#5e666a',
-    textAlign: 'center',
-  },
-  slotActions: {
-    width: '100%',
-    marginTop: 2,
-    gap: 6,
-  },
-  slotActionsRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'center',
-    alignContent: 'center',
-  },
-  slotActionsColumn: {
-    flexDirection: 'column',
-    alignItems: 'stretch',
   },
   slotButton: {
     backgroundColor: '#2f3638',
@@ -331,6 +452,9 @@ const styles = StyleSheet.create({
     backgroundColor: '#40494c',
     padding: 3,
   },
+  curveButtonOuterDisabled: {
+    opacity: 0.45,
+  },
   curveButtonInnerPrimary: {
     borderRadius: 22,
     borderTopLeftRadius: 30,
@@ -356,16 +480,20 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#14191a',
     paddingHorizontal: 14,
-    paddingBottom: 16,
-    paddingTop: 28,
-    gap: 14,
+    paddingBottom: 8,
+    paddingTop: 8,
+    gap: 12,
   },
   previewHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginTop: 8,
-    paddingTop: 4,
+  },
+  previewStage: {
+    flex: 1,
+    width: '100%',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   previewTitle: {
     color: '#e8e5e0',
@@ -382,35 +510,15 @@ const styles = StyleSheet.create({
     borderRadius: 999,
   },
   previewCanvas: {
-    width: '100%',
-    aspectRatio: 9 / 16,
-    alignSelf: 'center',
     overflow: 'hidden',
-  },
-  previewCanvasBlackBorders: {
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: '#4f595b',
     backgroundColor: '#000000',
-    padding: 6,
-  },
-  previewCanvasNoBorders: {
-    borderRadius: 0,
-    borderWidth: 0,
-    backgroundColor: '#21292b',
-    padding: 0,
   },
   previewSlot: {
+    flex: 1,
+    width: '100%',
+    height: '100%',
     overflow: 'hidden',
-    backgroundColor: '#0e1314',
-  },
-  previewSlotWithBlackBorders: {
-    borderRadius: 12,
-    borderWidth: 0,
-  },
-  previewSlotWithoutBorders: {
-    borderRadius: 0,
-    borderWidth: 0,
+    backgroundColor: '#000000',
   },
   previewMedia: {
     width: '100%',
@@ -443,9 +551,15 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#121719',
     paddingHorizontal: 14,
-    paddingTop: 10,
-    paddingBottom: 16,
+    paddingTop: 8,
+    paddingBottom: 8,
     gap: 12,
+  },
+  editorCanvasSlot: {
+    flex: 1,
+    width: '100%',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   editorTitle: {
     color: '#ece9e2',
@@ -458,19 +572,12 @@ const styles = StyleSheet.create({
     marginTop: -6,
   },
   editorCanvas: {
-    width: '100%',
     alignSelf: 'center',
     backgroundColor: '#060909',
     borderRadius: 16,
     overflow: 'hidden',
     borderWidth: 1,
     borderColor: '#3f494c',
-  },
-  editorCanvasVertical: {
-    aspectRatio: 9 / 16,
-  },
-  editorCanvasHorizontal: {
-    aspectRatio: 16 / 9,
   },
   editorImage: {
     width: '100%',
@@ -545,26 +652,14 @@ const styles = StyleSheet.create({
     width: 220,
     aspectRatio: 9 / 16,
     overflow: 'hidden',
-  },
-  exportCanvasBlackBorders: {
     backgroundColor: '#000000',
-    padding: 6,
-    borderRadius: 0,
-  },
-  exportCanvasNoBorders: {
-    backgroundColor: '#000000',
-    padding: 0,
-    borderRadius: 0,
   },
   exportSlot: {
+    flex: 1,
+    width: '100%',
+    height: '100%',
     overflow: 'hidden',
     backgroundColor: '#000000',
-  },
-  exportSlotWithBlackBorders: {
-    borderRadius: 0,
-  },
-  exportSlotWithoutBorders: {
-    borderRadius: 0,
   },
   exportMedia: {
     width: '100%',
@@ -698,6 +793,16 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: 10,
     marginTop: 4,
+  },
+  successThumb: {
+    width: 108,
+    height: 192,
+    alignSelf: 'center',
+    backgroundColor: '#000000',
+    overflow: 'hidden',
+  },
+  successActions: {
+    gap: 8,
   },
 });
 

@@ -1,6 +1,8 @@
-import { ReactNode } from 'react';
-import { View } from 'react-native';
+import { ReactNode, useState } from 'react';
+import { StyleSheet, View } from 'react-native';
+import { STORY_HEIGHT, STORY_WIDTH } from '../constants/collage';
 import { LayoutType, SlotSpec } from '../types/collage';
+import { getSlotBoundsMap } from '../utils/collageMath';
 
 type Props = {
   layout: LayoutType;
@@ -10,41 +12,39 @@ type Props = {
 };
 
 export function CollageLayout({ layout, hasBlackBorders, slots, renderSlot }: Props) {
-  if (layout === 'three-horizontal') {
-    return <View style={{ flex: 1, gap: hasBlackBorders ? 6 : 0 }}>{slots.map(renderSlot)}</View>;
-  }
-
-  if (layout === 'two-vertical-one-horizontal') {
-    return (
-      <>
-        <View
-          style={{
-            flexDirection: 'row',
-            flex: 2,
-            gap: hasBlackBorders ? 6 : 0,
-            marginBottom: hasBlackBorders ? 6 : 0,
-          }}
-        >
-          {slots.slice(0, 2).map(renderSlot)}
-        </View>
-        <View style={{ flex: 1 }}>{renderSlot(slots[2])}</View>
-      </>
-    );
-  }
+  const [box, setBox] = useState({ width: 0, height: 0 });
+  const bounds = getSlotBoundsMap(layout, hasBlackBorders);
+  const scaleX = box.width > 0 ? box.width / STORY_WIDTH : 0;
+  const scaleY = box.height > 0 ? box.height / STORY_HEIGHT : 0;
 
   return (
-    <>
-      <View style={{ flex: 1 }}>{renderSlot(slots[0])}</View>
-      <View
-        style={{
-          flexDirection: 'row',
-          flex: 2,
-          gap: hasBlackBorders ? 6 : 0,
-          marginTop: hasBlackBorders ? 6 : 0,
-        }}
-      >
-        {slots.slice(1, 3).map(renderSlot)}
-      </View>
-    </>
+    <View
+      style={StyleSheet.absoluteFill}
+      onLayout={(event) => {
+        const { width, height } = event.nativeEvent.layout;
+        setBox((prev) => (prev.width === width && prev.height === height ? prev : { width, height }));
+      }}
+    >
+      {scaleX > 0 &&
+        slots.map((slot) => {
+          const bound = bounds[slot.id];
+          if (!bound) return null;
+          return (
+            <View
+              key={slot.id}
+              style={{
+                position: 'absolute',
+                left: bound.x * scaleX,
+                top: bound.y * scaleY,
+                width: bound.width * scaleX,
+                height: bound.height * scaleY,
+                overflow: 'hidden',
+              }}
+            >
+              {renderSlot(slot)}
+            </View>
+          );
+        })}
+    </View>
   );
 }
