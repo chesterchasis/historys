@@ -13,6 +13,33 @@ const readImageSize = (imageUri: string) =>
     );
   });
 
+/** Fotograma del clip en un instante, para la miniatura del hueco y la tira de recorte. */
+export const clipThumbnail = async (uri: string, timeMs: number, quality = 1): Promise<string | undefined> => {
+  try {
+    const thumbnail = await VideoThumbnails.getThumbnailAsync(uri, { time: Math.max(0, Math.round(timeMs)), quality });
+    return thumbnail.uri;
+  } catch {
+    return undefined;
+  }
+};
+
+const stripCache = new Map<string, string[]>();
+
+/** Fotogramas repartidos por todo el clip para dibujar la tira del recorte. Se guardan por clip. */
+export const clipStrip = async (uri: string, durationMs: number, count: number): Promise<string[]> => {
+  const key = `${uri}|${durationMs}|${count}`;
+  const cached = stripCache.get(key);
+  if (cached) return cached;
+
+  const frames: string[] = [];
+  for (let i = 0; i < count; i += 1) {
+    const frame = await clipThumbnail(uri, ((i + 0.5) / count) * durationMs, 0.3);
+    if (frame) frames.push(frame);
+  }
+  if (frames.length === count) stripCache.set(key, frames);
+  return frames;
+};
+
 export const formatClipDuration = (milliseconds: number) => {
   const totalSeconds = Math.max(0, Math.round(milliseconds / 1000));
   const minutes = Math.floor(totalSeconds / 60);
@@ -39,6 +66,7 @@ export async function buildSlotMedia(asset: ImagePickerAsset): Promise<SlotMedia
   let stillHeight: number | undefined;
   let rotation: number | undefined;
   let hasAudio: boolean | undefined;
+  let hdr: SlotMedia['hdr'];
 
   if (kind === 'photo') {
     const size = await readImageSize(asset.uri);
@@ -56,6 +84,7 @@ export async function buildSlotMedia(asset: ImagePickerAsset): Promise<SlotMedia
       height = probed.height;
       rotation = probed.rotation;
       hasAudio = probed.hasAudio;
+      hdr = probed.hdr;
     } else if (still) {
       width = still.width;
       height = still.height;
@@ -73,6 +102,7 @@ export async function buildSlotMedia(asset: ImagePickerAsset): Promise<SlotMedia
     stillHeight,
     rotation: kind === 'video' ? rotation : undefined,
     hasAudio: kind === 'video' ? hasAudio : undefined,
+    hdr: kind === 'video' ? hdr : undefined,
     durationMs: kind === 'video' && asset.duration ? asset.duration : undefined,
     transform: { scale: 1, translateX: 0, translateY: 0 },
     muted: kind === 'video' ? false : undefined,

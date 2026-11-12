@@ -1,21 +1,23 @@
 import { ReactNode, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
-import { STORY_HEIGHT, STORY_WIDTH } from '../constants/collage';
-import { LayoutType, SlotSpec } from '../types/collage';
+import { FORMAT_SIZES } from '../constants/collage';
+import { CollageFormat, LayoutType, SlotSpec } from '../types/collage';
 import { getSlotBoundsMap } from '../utils/collageMath';
 
 type Props = {
   layout: LayoutType;
   hasBlackBorders: boolean;
+  format: CollageFormat;
   slots: SlotSpec[];
   renderSlot: (slot: SlotSpec) => ReactNode;
 };
 
-export function CollageLayout({ layout, hasBlackBorders, slots, renderSlot }: Props) {
+export function CollageLayout({ layout, hasBlackBorders, format, slots, renderSlot }: Props) {
   const [box, setBox] = useState({ width: 0, height: 0 });
-  const bounds = getSlotBoundsMap(layout, hasBlackBorders);
-  const scaleX = box.width > 0 ? box.width / STORY_WIDTH : 0;
-  const scaleY = box.height > 0 ? box.height / STORY_HEIGHT : 0;
+  const bounds = getSlotBoundsMap(layout, hasBlackBorders, format);
+  const size = FORMAT_SIZES[format];
+  const scaleX = box.width > 0 ? box.width / size.width : 0;
+  const scaleY = box.height > 0 ? box.height / size.height : 0;
 
   return (
     <View

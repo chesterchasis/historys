@@ -1,6 +1,7 @@
 import { StyleSheet } from 'react-native';
 
-const styles = StyleSheet.create({
+/** Hoja de estilos del tema claro. El oscuro se deriva de ella en src/theme/theme.ts. */
+export const lightStyles = StyleSheet.create({
   safeArea: {
     flex: 1,
     backgroundColor: '#f1efeb',
@@ -26,6 +27,15 @@ const styles = StyleSheet.create({
   canvasFrame: {
     overflow: 'hidden',
     backgroundColor: '#000000',
+    borderRadius: 20,
+  },
+  bottomStack: {
+    gap: 10,
+  },
+  panelOverlay: {
+    position: 'absolute',
+    left: 16,
+    right: 16,
   },
   caption: {
     minHeight: 18,
@@ -115,6 +125,19 @@ const styles = StyleSheet.create({
   panelRow: {
     gap: 6,
   },
+  panelColumns: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  panelColumn: {
+    flex: 1,
+  },
+  canvasOutline: {
+    ...StyleSheet.absoluteFillObject,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: 'rgba(0, 0, 0, 0.16)',
+  },
   panelRowLabel: {
     fontSize: 12,
     fontWeight: '700',
@@ -164,56 +187,107 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  titleToolButtonHelp: {
-    fontSize: 17,
-    fontWeight: '800',
-    color: '#2f3638',
-    marginTop: -1,
+  menuDivider: {
+    height: 1,
+    backgroundColor: '#dbd7d1',
+    marginHorizontal: 14,
   },
-  titleToolButtonMenu: {
-    fontSize: 20,
-    fontWeight: '800',
-    color: '#2f3638',
-    letterSpacing: 1,
-    marginTop: -4,
+  settingsScroll: {
+    flexGrow: 0,
+    maxHeight: 520,
   },
-  menuBackdrop: {
-    ...StyleSheet.absoluteFillObject,
+  settingsSection: {
+    gap: 6,
   },
-  menuCard: {
-    position: 'absolute',
-    minWidth: 210,
-    backgroundColor: '#f9f8f6',
+  settingsSectionLabel: {
+    marginLeft: 4,
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#626a6e',
+  },
+  settingsGroup: {
+    backgroundColor: '#f2efea',
     borderRadius: 14,
     borderWidth: 1,
-    borderColor: '#dbd7d1',
-    paddingHorizontal: 6,
-    elevation: 12,
-    shadowColor: '#000000',
-    shadowOpacity: 0.15,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 4 },
+    borderColor: '#ded9d0',
+    overflow: 'hidden',
   },
-  menuItem: {
-    paddingHorizontal: 12,
-    paddingVertical: 14,
+  settingsRow: {
+    minHeight: 54,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
   },
-  menuItemText: {
+  settingsRowText: {
+    flex: 1,
+    gap: 2,
+  },
+  settingsRowLabel: {
     fontSize: 14,
     fontWeight: '700',
     color: '#2f3638',
   },
-  menuItemTextDanger: {
+  settingsRowLabelDanger: {
     color: '#b85c4b',
   },
-  menuItemTextMuted: {
+  settingsRowHint: {
+    fontSize: 11.5,
+    lineHeight: 15,
     color: '#626a6e',
-    fontWeight: '600',
   },
-  menuDivider: {
-    height: 1,
-    backgroundColor: '#dbd7d1',
-    marginHorizontal: 8,
+  settingsSegments: {
+    padding: 12,
+    gap: 8,
+  },
+  settingsSegTrack: {
+    marginHorizontal: 0,
+    marginBottom: 0,
+  },
+  settingsFooterBlock: {
+    alignItems: 'center',
+    gap: 2,
+    paddingVertical: 6,
+  },
+  settingsFooterTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#2f3638',
+    letterSpacing: 0.2,
+  },
+  settingsFooter: {
+    textAlign: 'center',
+    fontSize: 11.5,
+    fontWeight: '600',
+    color: '#626a6e',
+  },
+  segTrack: {
+    flexDirection: 'row',
+    marginHorizontal: 6,
+    marginBottom: 10,
+    padding: 3,
+    borderRadius: 999,
+    backgroundColor: '#e7e2da',
+  },
+  segOption: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 8,
+    borderRadius: 999,
+  },
+  segOptionSelected: {
+    backgroundColor: '#2f3638',
+  },
+  segText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#2f3638',
+  },
+  segTextSelected: {
+    color: '#f4f2ee',
   },
   titleIcon: {
     width: 34,
@@ -462,6 +536,15 @@ const styles = StyleSheet.create({
     lineHeight: 28,
     marginTop: -1,
     includeFontPadding: false,
+  },
+  slotEmptyPlusOnWhite: {
+    borderColor: '#9aa0a3',
+  },
+  slotEmptyTextOnWhite: {
+    color: '#7b8386',
+  },
+  slotSelectedRingOnWhite: {
+    borderColor: '#2f3638',
   },
   slotEmptyLabel: {
     color: '#c8c2b8',
@@ -871,10 +954,9 @@ const styles = StyleSheet.create({
     gap: 14,
   },
   sheetThumb: {
-    width: 54,
-    height: 96,
     backgroundColor: '#000000',
     overflow: 'hidden',
+    borderRadius: 8,
   },
   sheetSummaryText: {
     flex: 1,
@@ -1094,6 +1176,7 @@ const styles = StyleSheet.create({
     alignSelf: 'center',
     backgroundColor: '#000000',
     overflow: 'hidden',
+    borderRadius: 12,
   },
   successActions: {
     gap: 8,
@@ -1146,4 +1229,4 @@ const styles = StyleSheet.create({
   },
 });
 
-export default styles;
+export type AppStyles = typeof lightStyles;

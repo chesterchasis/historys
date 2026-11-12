@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { Pressable, Text, View } from 'react-native';
-import styles from '../styles/appStyles';
+import { useTheme } from '../theme/ThemeContext';
 
 export type IconName = keyof typeof Ionicons.glyphMap;
 
@@ -20,6 +20,7 @@ type Props = {
 };
 
 export function ToolDock({ items }: Props) {
+  const { styles, colors } = useTheme();
   return (
     <View style={styles.dock}>
       {items.map((item) => (
@@ -37,7 +38,7 @@ export function ToolDock({ items }: Props) {
             item.disabled && styles.dockButtonDisabled,
           ]}
         >
-          <Ionicons name={item.icon} size={20} color={item.emphasis ? '#f4f2ee' : '#2f3638'} />
+          <Ionicons name={item.icon} size={20} color={item.emphasis ? colors.onInk : colors.ink} />
           <Text
             numberOfLines={1}
             style={[styles.dockLabel, item.emphasis && styles.dockLabelEmphasis]}

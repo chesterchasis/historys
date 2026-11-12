@@ -1,12 +1,13 @@
 import Constants, { ExecutionEnvironment } from 'expo-constants';
 import * as FileSystem from 'expo-file-system';
 import * as MediaLibrary from 'expo-media-library';
-import { Linking, Platform } from 'react-native';
+import { Platform } from 'react-native';
 import { captureRef } from 'react-native-view-shot';
-import { ExportQuality, STORY_HEIGHT, STORY_WIDTH } from '../constants/collage';
-import { LayoutType, SlotMedia, SlotSpec } from '../types/collage';
+import { ExportQuality, FORMAT_SIZES, PHOTO_EXPORT_SCALE } from '../constants/collage';
+import { BackgroundMode, CollageFormat, HdrKind, LayoutType, SlotMedia, SlotSpec } from '../types/collage';
 import { clamp, getSlotBoundsMap } from './collageMath';
-import { normalizeQuarterTurn, normalizeTransform } from './frameTransform';
+import { buildCollageGraph, type GraphItem, scaleBounds } from './exportGraph';
+import { normalizeQuarterTurn } from './frameTransform';
 
 export const isRunningInExpoGo = (): boolean => {
   try {
@@ -22,23 +23,31 @@ export const hasVideoSlots = (
   slots: Record<string, SlotMedia>
 ): boolean => activeSlots.some((s) => slots[s.id]?.kind === 'video');
 
-type ExportVideoOptions = {
+type CollageOptions = {
   activeSlots: SlotSpec[];
   slots: Record<string, SlotMedia>;
   layout: LayoutType;
   hasBlackBorders: boolean;
+  format: CollageFormat;
+  background: BackgroundMode;
+  onProgress?: (value: number) => void;
+};
+
+type ExportVideoOptions = CollageOptions & {
   duration: number;
   quality?: ExportQuality;
-  onProgress?: (value: number) => void;
 };
 
 export type ExportVideoResult = {
   codec: string;
   h264: boolean;
+  /** Algún clip HDR se convirtió a SDR con tone mapping. */
+  hdrConverted: boolean;
 };
 
 type ExportImageOptions = {
   exportCanvasRef: { current: any };
+  format: CollageFormat;
 };
 
 export class ExportCancelledError extends Error {
@@ -73,17 +82,6 @@ const deleteCacheFile = async (uri: string) => {
 const quoteForFfmpeg = (uri: string) => `"${uri.replace(/"/g, '\\"')}"`;
 const toFfmpegPath = (uri: string) => (uri.startsWith('file://') ? uri.replace('file://', '') : uri);
 
-const audioPad = (inputIndex: number, duration: number, label: string) =>
-  `[${inputIndex}:a]aformat=sample_fmts=fltp:sample_rates=44100:channel_layouts=stereo,apad,atrim=duration=${duration},asetpts=PTS-STARTPTS[${label}]`;
-
-const videoRotationFilters = (rotation?: number): string[] => {
-  const turns = normalizeQuarterTurn(rotation);
-  if (turns === 90) return ['transpose=2'];
-  if (turns === 270) return ['transpose=1'];
-  if (turns === 180) return ['hflip', 'vflip'];
-  return [];
-};
-
 const readCounterClockwiseRotation = (properties: Record<string, any> | undefined): number => {
   const sideData = properties?.side_data_list;
   if (Array.isArray(sideData)) {
@@ -99,9 +97,22 @@ const readCounterClockwiseRotation = (properties: Record<string, any> | undefine
   return (360 - clockwise) % 360;
 };
 
+const readHdrKind = (properties: Record<string, any> | undefined): HdrKind | undefined => {
+  const transfer = String(properties?.color_transfer ?? '').toLowerCase();
+  if (transfer === 'arib-std-b67') return 'hlg';
+  if (transfer === 'smpte2084') return 'pq';
+  return undefined;
+};
+
 export const probeVideoOrientation = async (
   uri: string
-): Promise<{ width: number; height: number; rotation: number; hasAudio: boolean } | null> => {
+): Promise<{
+  width: number;
+  height: number;
+  rotation: number;
+  hasAudio: boolean;
+  hdr?: HdrKind;
+} | null> => {
   if (isRunningInExpoGo()) return null;
 
   try {
@@ -116,7 +127,8 @@ export const probeVideoOrientation = async (
     const codedHeight = Number(stream.getHeight?.());
     if (!codedWidth || !codedHeight) return null;
 
-    const rotation = normalizeQuarterTurn(readCounterClockwiseRotation(stream.getAllProperties?.()));
+    const properties = stream.getAllProperties?.();
+    const rotation = normalizeQuarterTurn(readCounterClockwiseRotation(properties));
     const swap = rotation === 90 || rotation === 270;
     const hasAudio = streams.some((item: { getType?: () => string }) => item.getType?.() === 'audio');
     return {
@@ -124,6 +136,7 @@ export const probeVideoOrientation = async (
       height: swap ? codedWidth : codedHeight,
       rotation,
       hasAudio,
+      hdr: readHdrKind(properties),
     };
   } catch {
     return null;
@@ -197,22 +210,6 @@ const probeOutputVideoCodec = async (uri: string): Promise<string> => {
   }
 };
 
-export const openDeviceGallery = async (): Promise<boolean> => {
-  try {
-    if (Platform.OS === 'ios') {
-      await Linking.openURL('photos-redirect://');
-      return true;
-    }
-    if (Platform.OS === 'android') {
-      await Linking.openURL('content://media/external/images/media');
-      return true;
-    }
-    return false;
-  } catch {
-    return false;
-  }
-};
-
 export const saveToGallery = async (assetUri: string) => {
   const asset = await MediaLibrary.createAssetAsync(assetUri);
   const albumName = 'Historys';
@@ -225,17 +222,19 @@ export const saveToGallery = async (assetUri: string) => {
   }
 };
 
-export const exportAsImageFallback = async ({ exportCanvasRef }: ExportImageOptions) => {
+/** Respaldo cuando FFmpeg no está disponible: captura la vista, a menos resolución que la foto normal. */
+export const exportAsImageFallback = async ({ exportCanvasRef, format }: ExportImageOptions) => {
   if (!exportCanvasRef.current) throw new Error('No export canvas');
 
   await new Promise((resolve) => setTimeout(resolve, 120));
 
+  const size = FORMAT_SIZES[format];
   const exportedImageUri = await captureRef(exportCanvasRef.current, {
     format: 'jpg',
     quality: 1,
     result: 'tmpfile',
-    width: STORY_WIDTH,
-    height: STORY_HEIGHT,
+    width: size.width,
+    height: size.height,
   });
 
   try {
@@ -245,30 +244,7 @@ export const exportAsImageFallback = async ({ exportCanvasRef }: ExportImageOpti
   }
 };
 
-// Nota: ya no creamos un PNG negro temporal. Usamos el filtro fuente `color=`
-// dentro de filter_complex como base del collage. Eso evita escrituras a disco
-// (la API antigua `writeAsStringAsync` está deprecada en SDK 54) y simplifica
-// la limpieza.
-
-export const exportVideoWithFfmpeg = async ({
-  activeSlots,
-  slots,
-  layout,
-  hasBlackBorders,
-  duration,
-  quality = 'medium',
-  onProgress,
-}: ExportVideoOptions): Promise<ExportVideoResult> => {
-  if (isRunningInExpoGo()) {
-    throw new Error(
-      'EXPO_GO_UNSUPPORTED: La exportación de video usa FFmpeg, un módulo nativo que no está disponible en Expo Go. Crea un development build (npx expo run:android o eas build --profile development) para exportar collages con video.'
-    );
-  }
-
-  // La exportación a video va solo por FFmpeg: el mismo encaje por slot que el preview
-  // (filter_complex + overlays). Un compositor multi-pista distinto (p. ej. MediaEngine)
-  // no reproducía bien fotos+vídeo ni las posiciones.
-
+const loadFfmpeg = async () => {
   let ffmpegModule: any;
   try {
     ffmpegModule = await import('@wokcito/ffmpeg-kit-react-native');
@@ -283,164 +259,134 @@ export const exportVideoWithFfmpeg = async ({
       'FFMPEG_NATIVE_UNAVAILABLE: El módulo nativo de FFmpeg no está enlazado en este binario. Reconstruye la app (npx expo prebuild + npx expo run:android).'
     );
   }
+  return { FFmpegKit, ReturnCode };
+};
 
-  cancelRequested = false;
+const assertNotExpoGo = () => {
+  if (isRunningInExpoGo()) {
+    throw new Error(
+      'EXPO_GO_UNSUPPORTED: La exportación usa FFmpeg, un módulo nativo que no está disponible en Expo Go. Crea un development build (npx expo run:android o eas build --profile development) para exportar collages.'
+    );
+  }
+};
 
-  // Limitamos a 30 s máximo por requisito de producto.
-  const safeDuration = clamp(Math.round(duration), 1, 30);
+const runFfmpeg = async (
+  { FFmpegKit, ReturnCode }: { FFmpegKit: any; ReturnCode: any },
+  command: string,
+  onStatistics?: (renderedMs: number) => void
+) => {
+  const session = await new Promise<any>((resolve, reject) => {
+    FFmpegKit.executeAsync(
+      command,
+      (completedSession: any) => resolve(completedSession),
+      undefined,
+      (statistics: any) => {
+        const renderedMs = typeof statistics?.getTime === 'function' ? Number(statistics.getTime()) : 0;
+        onStatistics?.(renderedMs);
+      }
+    ).catch(reject);
+  });
 
-  const slotBoundsMap = getSlotBoundsMap(layout, hasBlackBorders);
-  const inputArgs: string[] = [];
-  const filterChains: string[] = [];
-  const overlays: string[] = [];
-  const audioInputs: number[] = [];
+  const returnCode = await session.getReturnCode();
+  if (cancelRequested || ReturnCode.isCancel(returnCode)) {
+    throw new ExportCancelledError();
+  }
+  if (!ReturnCode.isSuccess(returnCode)) {
+    const output = typeof session?.getOutput === 'function' ? await session.getOutput() : '';
+    const failStack = typeof session?.getFailStackTrace === 'function' ? await session.getFailStackTrace() : '';
+    throw new Error(output || failStack || 'FFmpeg export failed');
+  }
+};
 
-  // Base negra como fuente del filter_complex (no requiere input ni archivo).
-  filterChains.push(
-    `color=c=black:s=${STORY_WIDTH}x${STORY_HEIGHT}:d=${safeDuration}:r=30,format=yuv420p[base0]`
-  );
-
-  let inputIndex = 0; // los slots empiezan en 0 ahora (no hay input de imagen negra)
-  let overlayIndex = 0;
-
+/** Resuelve el audio de cada vídeo: usa el dato guardado o lo pregunta a ffprobe si falta. */
+const buildGraphItems = async (
+  { activeSlots, slots, layout, hasBlackBorders, format }: CollageOptions,
+  factor: number
+): Promise<GraphItem[]> => {
+  const boundsMap = getSlotBoundsMap(layout, hasBlackBorders, format);
+  const items: GraphItem[] = [];
   for (const slot of activeSlots) {
     const media = slots[slot.id] ?? { kind: 'empty' as const };
     if (media.kind === 'empty' || !media.uri) continue;
 
-    const bounds = slotBoundsMap[slot.id];
-    const inputPath = quoteForFfmpeg(toFfmpegPath(media.uri));
-
-    if (media.kind === 'photo') {
-      inputArgs.push(`-loop 1 -t ${safeDuration} -i ${inputPath}`);
-    } else {
-      inputArgs.push(`-noautorotate -stream_loop -1 -i ${inputPath}`);
+    let hasAudio = false;
+    if (media.kind === 'video' && !media.muted) {
+      hasAudio = media.hasAudio ?? (await probeVideoOrientation(media.uri))?.hasAudio ?? false;
     }
-
-    const slotLabel = `slot${inputIndex}`;
-    const transform = normalizeTransform(media.transform);
-    const zoom = transform.scale;
-
-    // Contain inside slot*zoom, then pad only up to the slot on the short side.
-    // Force even dimensions so yuv420p/yuvj420p pad never truncates below iw/ih.
-    const toEven = (value: number) => Math.max(2, Math.ceil(value / 2) * 2);
-    const canvasWidth = toEven(Math.max(Math.round(bounds.width * zoom), bounds.width));
-    const canvasHeight = toEven(Math.max(Math.round(bounds.height * zoom), bounds.height));
-    const panX = transform.translateX.toFixed(4);
-    const panY = transform.translateY.toFixed(4);
-    const cropXExpr = `max(0\\,min((iw-${bounds.width})/2*(1-(${panX}))\\,iw-${bounds.width}))`;
-    const cropYExpr = `max(0\\,min((ih-${bounds.height})/2*(1-(${panY}))\\,ih-${bounds.height}))`;
-    const rotationPrefix =
-      media.kind === 'video' ? videoRotationFilters(media.rotation).join(',') : '';
-
-    filterChains.push(
-      `[${inputIndex}:v]` +
-        `setpts=PTS-STARTPTS,` +
-        (rotationPrefix ? `${rotationPrefix},` : '') +
-        `scale=${canvasWidth}:${canvasHeight}:force_original_aspect_ratio=decrease:force_divisible_by=2:flags=bicubic,` +
-        `pad=max(iw+mod(iw\\,2)\\,${bounds.width}):max(ih+mod(ih\\,2)\\,${bounds.height}):(ow-iw)/2:(oh-ih)/2:color=black,` +
-        `crop=${bounds.width}:${bounds.height}:${cropXExpr}:${cropYExpr},` +
-        `setsar=1,trim=duration=${safeDuration},setpts=PTS-STARTPTS,format=yuv420p[${slotLabel}]`
-    );
-
-    overlays.push(
-      `[base${overlayIndex}][${slotLabel}]` +
-        `overlay=${bounds.x}:${bounds.y}:shortest=1[base${overlayIndex + 1}]`
-    );
-
-    if (media.kind === 'video' && !media.muted && media.uri) {
-      let hasAudio = media.hasAudio;
-      if (hasAudio == null) {
-        hasAudio = (await probeVideoOrientation(media.uri))?.hasAudio ?? false;
-      }
-      if (hasAudio) audioInputs.push(inputIndex);
-    }
-
-    inputIndex += 1;
-    overlayIndex += 1;
+    items.push({ media, bounds: scaleBounds(boundsMap[slot.id], factor), hasAudio });
   }
+  return items;
+};
+
+export const exportVideoWithFfmpeg = async (options: ExportVideoOptions): Promise<ExportVideoResult> => {
+  assertNotExpoGo();
+
+  // La exportación a video va solo por FFmpeg: el mismo encaje por slot que el preview
+  // (filter_complex + overlays). Un compositor multi-pista distinto (p. ej. MediaEngine)
+  // no reproducía bien fotos+vídeo ni las posiciones.
+  const ffmpeg = await loadFfmpeg();
+  const { background, format, quality = 'medium', onProgress } = options;
+
+  cancelRequested = false;
+
+  // Limitamos a 30 s máximo por requisito de producto.
+  const safeDuration = clamp(Math.round(options.duration), 1, 30);
+  const { width, height } = FORMAT_SIZES[format];
+  const items = await buildGraphItems(options, 1);
 
   const outputFile = new FileSystem.File(FileSystem.Paths.cache, `collage_${Date.now()}.mp4`);
   const outputUri = outputFile.uri;
   const outputPath = quoteForFfmpeg(toFfmpegPath(outputUri));
 
-  const audioChains: string[] = [];
-  if (audioInputs.length === 1) {
-    audioChains.push(audioPad(audioInputs[0], safeDuration, 'aout'));
-  } else if (audioInputs.length > 1) {
-    const pads = audioInputs.map((index, order) => {
-      const label = `am${order}`;
-      audioChains.push(audioPad(index, safeDuration, label));
-      return `[${label}]`;
-    });
-    audioChains.push(
-      `${pads.join('')}amix=inputs=${audioInputs.length}:duration=longest:dropout_transition=0[aout]`
-    );
-  }
-
-  const filterComplex = [...filterChains, ...overlays, ...audioChains].join(';');
-  const finalLabel = overlayIndex === 0 ? 'base0' : `base${overlayIndex}`;
-  const audioEncodingArgs =
-    audioInputs.length > 0 ? ['-map "[aout]"', '-c:a', 'aac'] : ['-an'];
-
-  const buildCommand = (videoEncodeArgs: string[]) =>
+  const buildCommand = (graph: ReturnType<typeof buildCollageGraph>, videoEncodeArgs: string[]) =>
     [
       '-y',
       ...EXPORT_PROBE_ARGS,
-      ...inputArgs,
-      `-filter_complex "${filterComplex}"`,
-      `-map "[${finalLabel}]"`,
-      ...audioEncodingArgs,
+      ...graph.inputArgs,
+      `-filter_complex "${graph.filterComplex}"`,
+      `-map "[${graph.videoLabel}]"`,
+      ...(graph.hasAudio ? ['-map "[aout]"', '-c:a', 'aac'] : ['-an']),
       '-r 30',
       '-t',
       `${safeDuration}`,
       ...videoEncodeArgs,
       '-pix_fmt yuv420p',
+      '-colorspace bt709',
+      '-color_primaries bt709',
+      '-color_trc bt709',
+      '-color_range tv',
       '-movflags',
       '+faststart',
       outputPath,
     ].join(' ');
 
-  const runFfmpeg = async (command: string) => {
-    const session = await new Promise<any>((resolve, reject) => {
-      FFmpegKit.executeAsync(
-        command,
-        (completedSession: any) => resolve(completedSession),
-        undefined,
-        (statistics: any) => {
-          const renderedMs = typeof statistics?.getTime === 'function' ? Number(statistics.getTime()) : 0;
-          const ratio = clamp(renderedMs / (safeDuration * 1000), 0, 0.98);
-          onProgress?.(ratio);
-        }
-      ).catch(reject);
-    });
+  const encoders = encoderAttempts(quality, await binaryHasLibx264(ffmpeg.FFmpegKit));
+  const hasHdrClip = items.some((item) => item.media.kind === 'video' && item.media.hdr);
+  // Si la conversión HDR fallara en este dispositivo, se reintenta sin ella antes de rendirse.
+  const hdrModes: ('tonemap' | 'none')[] = hasHdrClip ? ['tonemap', 'none'] : ['none'];
 
-    const returnCode = await session.getReturnCode();
-    if (cancelRequested || ReturnCode.isCancel(returnCode)) {
-      throw new ExportCancelledError();
-    }
-    if (!ReturnCode.isSuccess(returnCode)) {
-      const output = typeof session?.getOutput === 'function' ? await session.getOutput() : '';
-      const failStack =
-        typeof session?.getFailStackTrace === 'function' ? await session.getFailStackTrace() : '';
-      throw new Error(output || failStack || 'FFmpeg export failed');
-    }
-  };
-
-  const attempts = encoderAttempts(quality, await binaryHasLibx264(FFmpegKit));
+  let hdrConverted = false;
   let encoded = false;
   let lastError: unknown;
   try {
-    for (const args of attempts) {
-      if (cancelRequested) throw new ExportCancelledError();
-      try {
-        await runFfmpeg(buildCommand(args));
-        encoded = true;
-        break;
-      } catch (error) {
-        if (error instanceof ExportCancelledError) throw error;
-        lastError = error;
-        onProgress?.(0.05);
+    for (const hdr of hdrModes) {
+      const graph = buildCollageGraph({ mode: 'video', width, height, items, background, duration: safeDuration, hdr });
+      for (const args of encoders) {
+        if (cancelRequested) throw new ExportCancelledError();
+        try {
+          await runFfmpeg(ffmpeg, buildCommand(graph, args), (renderedMs) => {
+            onProgress?.(clamp(renderedMs / (safeDuration * 1000), 0, 0.98));
+          });
+          encoded = true;
+          hdrConverted = graph.hdrConverted;
+          break;
+        } catch (error) {
+          if (error instanceof ExportCancelledError) throw error;
+          lastError = error;
+          onProgress?.(0.05);
+        }
       }
+      if (encoded) break;
     }
     if (!encoded) {
       throw lastError instanceof Error ? lastError : new Error('FFmpeg export failed');
@@ -450,7 +396,49 @@ export const exportVideoWithFfmpeg = async ({
     if (cancelRequested) throw new ExportCancelledError();
     onProgress?.(1);
     await saveToGallery(outputUri);
-    return { codec, h264: isH264Codec(codec) };
+    return { codec, h264: isH264Codec(codec), hdrConverted };
+  } finally {
+    await deleteCacheFile(outputUri);
+  }
+};
+
+/** Un collage de solo fotos sale como un JPG al doble de tamaño, con la misma geometría que el vídeo. */
+export const exportStillWithFfmpeg = async (options: CollageOptions): Promise<{ width: number; height: number }> => {
+  assertNotExpoGo();
+
+  const ffmpeg = await loadFfmpeg();
+  const { background, format, onProgress } = options;
+
+  cancelRequested = false;
+
+  const base = FORMAT_SIZES[format];
+  const width = base.width * PHOTO_EXPORT_SCALE;
+  const height = base.height * PHOTO_EXPORT_SCALE;
+  const items = await buildGraphItems(options, PHOTO_EXPORT_SCALE);
+  const graph = buildCollageGraph({ mode: 'still', width, height, items, background, duration: 1, hdr: 'none' });
+
+  const outputFile = new FileSystem.File(FileSystem.Paths.cache, `collage_${Date.now()}.jpg`);
+  const outputUri = outputFile.uri;
+  const command = [
+    '-y',
+    ...EXPORT_PROBE_ARGS,
+    ...graph.inputArgs,
+    `-filter_complex "${graph.filterComplex}"`,
+    `-map "[${graph.videoLabel}]"`,
+    '-frames:v 1',
+    '-q:v 2',
+    '-pix_fmt yuvj420p',
+    quoteForFfmpeg(toFfmpegPath(outputUri)),
+  ].join(' ');
+
+  try {
+    onProgress?.(0.15);
+    await runFfmpeg(ffmpeg, command);
+    if (cancelRequested) throw new ExportCancelledError();
+    onProgress?.(0.9);
+    await saveToGallery(outputUri);
+    onProgress?.(1);
+    return { width, height };
   } finally {
     await deleteCacheFile(outputUri);
   }

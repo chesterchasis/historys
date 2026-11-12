@@ -1,5 +1,5 @@
-import { LayoutType, SlotBounds } from '../types/collage';
-import { STORY_HEIGHT, STORY_WIDTH } from '../constants/collage';
+import { CollageFormat, LayoutType, SlotBounds } from '../types/collage';
+import { FORMAT_SIZES } from '../constants/collage';
 
 export const clamp = (value: number, min: number, max: number) =>
   Math.max(min, Math.min(max, value));
@@ -15,12 +15,14 @@ export const fitFrame = (width: number, height: number, ratio: number) => {
 
 export const getSlotBoundsMap = (
   layout: LayoutType,
-  hasBlackBorders: boolean
+  hasBlackBorders: boolean,
+  format: CollageFormat = 'story'
 ): Record<string, SlotBounds> => {
+  const { width: canvasWidth, height: canvasHeight } = FORMAT_SIZES[format];
   const padding = hasBlackBorders ? 24 : 0;
   const gap = hasBlackBorders ? 24 : 0;
-  const innerWidth = STORY_WIDTH - padding * 2;
-  const innerHeight = STORY_HEIGHT - padding * 2;
+  const innerWidth = canvasWidth - padding * 2;
+  const innerHeight = canvasHeight - padding * 2;
 
   if (layout === 'three-horizontal') {
     const h1 = Math.floor((innerHeight - gap * 2) / 3);

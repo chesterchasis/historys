@@ -7,6 +7,10 @@ export type LayoutType =
 
 export type BorderMode = 'black' | 'none';
 
+export type CollageFormat = 'story' | 'feed' | 'square';
+
+export type BackgroundMode = 'black' | 'white';
+
 export type SlotSpec = {
   id: string;
   style: 'horizontal' | 'vertical';
@@ -39,7 +43,13 @@ export type SlotMedia = {
   hasAudio?: boolean;
   /** Clip length in milliseconds, as reported by the picker. Videos only. */
   durationMs?: number;
+  /** Where the story starts inside a clip longer than the story, in milliseconds. Videos only. */
+  trimStartMs?: number;
+  /** Transfer curve of an HDR clip. It is converted to SDR on export. Unset for SDR. Videos only. */
+  hdr?: HdrKind;
 };
+
+export type HdrKind = 'hlg' | 'pq';
 
 export type SlotBounds = {
   x: number;

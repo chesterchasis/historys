@@ -1,5 +1,5 @@
 import { Pressable, Text, View } from 'react-native';
-import styles from '../styles/appStyles';
+import { useTheme } from '../theme/ThemeContext';
 
 type Props = {
   title: string;
@@ -12,6 +12,7 @@ type Props = {
 };
 
 export function Coachmark({ title, body, step, bottom, arrowLeft = '50%', onDismiss }: Props) {
+  const { styles } = useTheme();
   return (
     <View pointerEvents="box-none" style={[styles.coachWrap, { bottom }]}>
       <Pressable

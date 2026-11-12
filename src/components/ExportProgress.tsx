@@ -1,5 +1,5 @@
 import { Text, View } from 'react-native';
-import styles from '../styles/appStyles';
+import { useTheme } from '../theme/ThemeContext';
 
 type Props = {
   status: string;
@@ -7,6 +7,7 @@ type Props = {
 };
 
 export function ExportProgress({ status, progress }: Props) {
+  const { styles } = useTheme();
   const percent = Math.round(progress * 100);
 
   return (

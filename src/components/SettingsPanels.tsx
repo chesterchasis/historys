@@ -1,8 +1,8 @@
 import type { ReactNode } from 'react';
 import { Pressable, Switch, Text, View } from 'react-native';
-import { LAYOUT_CHOICES } from '../constants/collage';
-import styles from '../styles/appStyles';
-import { BorderMode, LayoutType } from '../types/collage';
+import { BACKGROUND_CHOICES, FORMAT_CHOICES, LAYOUT_CHOICES } from '../constants/collage';
+import { useTheme } from '../theme/ThemeContext';
+import { BackgroundMode, BorderMode, CollageFormat, LayoutType } from '../types/collage';
 import { LayoutThumb } from './LayoutThumb';
 
 type PanelShellProps = {
@@ -12,6 +12,7 @@ type PanelShellProps = {
 };
 
 function PanelShell({ title, onClose, children }: PanelShellProps) {
+  const { styles } = useTheme();
   return (
     <View style={styles.panel}>
       <View style={styles.panelHeader}>
@@ -31,21 +32,65 @@ function PanelShell({ title, onClose, children }: PanelShellProps) {
   );
 }
 
+type ChoiceRowProps<T extends string | number> = {
+  label: string;
+  options: { id: T; label: string }[];
+  value: T;
+  onChange: (value: T) => void;
+};
+
+function ChoiceRow<T extends string | number>({ label, options, value, onChange }: ChoiceRowProps<T>) {
+  const { styles } = useTheme();
+  return (
+    <View style={styles.panelRow}>
+      <Text style={styles.panelRowLabel}>{label}</Text>
+      <View style={styles.durationRow}>
+        {options.map((option) => {
+          const selected = option.id === value;
+          return (
+            <Pressable
+              key={String(option.id)}
+              accessibilityRole="button"
+              accessibilityState={{ selected }}
+              accessibilityLabel={`${label} ${option.label}`}
+              style={[styles.durationChip, selected && styles.chipSelected]}
+              onPress={() => onChange(option.id)}
+            >
+              <Text style={[styles.durationChipText, selected && styles.chipTextSelected]}>
+                {option.label}
+              </Text>
+            </Pressable>
+          );
+        })}
+      </View>
+    </View>
+  );
+}
+
 type DesignPanelProps = {
   layout: LayoutType;
   borderMode: BorderMode;
+  format: CollageFormat;
+  background: BackgroundMode;
   onLayoutChange: (layout: LayoutType) => void;
   onBorderModeChange: (mode: BorderMode) => void;
+  onFormatChange: (format: CollageFormat) => void;
+  onBackgroundChange: (background: BackgroundMode) => void;
   onClose: () => void;
 };
 
 export function DesignPanel({
   layout,
   borderMode,
+  format,
+  background,
   onLayoutChange,
   onBorderModeChange,
+  onFormatChange,
+  onBackgroundChange,
   onClose,
 }: DesignPanelProps) {
+  const { styles, colors } = useTheme();
   const hasBlackBorders = borderMode === 'black';
 
   return (
@@ -62,7 +107,13 @@ export function DesignPanel({
               style={[styles.layoutChoice, selected && styles.layoutChoiceSelected]}
               onPress={() => onLayoutChange(choice.id)}
             >
-              <LayoutThumb layout={choice.id} hasBlackBorders={hasBlackBorders} selected={selected} />
+              <LayoutThumb
+                layout={choice.id}
+                hasBlackBorders={hasBlackBorders}
+                selected={selected}
+                format={format}
+                background={background}
+              />
               <Text style={[styles.layoutChoiceLabel, selected && styles.chipTextSelected]}>
                 {choice.label}
               </Text>
@@ -70,53 +121,28 @@ export function DesignPanel({
           );
         })}
       </View>
+      <View style={styles.panelColumns}>
+        <View style={styles.panelColumn}>
+          <ChoiceRow label="Formato" options={FORMAT_CHOICES} value={format} onChange={onFormatChange} />
+        </View>
+        <View style={styles.panelColumn}>
+          <ChoiceRow label="Fondo" options={BACKGROUND_CHOICES} value={background} onChange={onBackgroundChange} />
+        </View>
+      </View>
       <View style={styles.switchRow}>
         <View style={styles.switchText}>
           <Text style={styles.panelRowLabel}>Bordes</Text>
-          <Text style={styles.panelHint}>Margen negro entre huecos y alrededor</Text>
+          <Text style={styles.panelHint}>Margen entre huecos y alrededor</Text>
         </View>
         <Switch
           value={hasBlackBorders}
           onValueChange={(on) => onBorderModeChange(on ? 'black' : 'none')}
-          trackColor={{ false: '#cbc6be', true: '#2f3638' }}
-          thumbColor="#f9f8f6"
+          trackColor={{ false: colors.switchOff, true: colors.switchOn }}
+          thumbColor={colors.switchThumb}
           accessibilityLabel="Bordes"
         />
       </View>
     </PanelShell>
-  );
-}
-
-type ChoiceRowProps<T extends string | number> = {
-  label: string;
-  options: { id: T; label: string }[];
-  value: T;
-  onChange: (value: T) => void;
-};
-
-function ChoiceRow<T extends string | number>({ label, options, value, onChange }: ChoiceRowProps<T>) {
-  return (
-    <View style={styles.panelRow}>
-      <Text style={styles.panelRowLabel}>{label}</Text>
-      <View style={styles.durationRow}>
-        {options.map((option) => {
-          const selected = option.id === value;
-          return (
-            <Pressable
-              key={String(option.id)}
-              accessibilityRole="button"
-              accessibilityState={{ selected }}
-              style={[styles.durationChip, selected && styles.chipSelected]}
-              onPress={() => onChange(option.id)}
-            >
-              <Text style={[styles.durationChipText, selected && styles.chipTextSelected]}>
-                {option.label}
-              </Text>
-            </Pressable>
-          );
-        })}
-      </View>
-    </View>
   );
 }
 
@@ -128,6 +154,7 @@ type DurationPanelProps = {
 };
 
 export function DurationPanel({ duration, durationOptions, onDurationChange, onClose }: DurationPanelProps) {
+  const { styles } = useTheme();
   return (
     <PanelShell title="Duración" onClose={onClose}>
       <ChoiceRow

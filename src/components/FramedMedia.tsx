@@ -1,5 +1,5 @@
-import { ResizeMode, Video } from 'expo-av';
-import { useState } from 'react';
+import { type AVPlaybackStatus, ResizeMode, Video } from 'expo-av';
+import { useCallback, useRef, useState } from 'react';
 import { Image, ImageStyle, StyleSheet, View } from 'react-native';
 import { PhotoTransform } from '../types/collage';
 import { placedMediaRect, stillImageTurn } from '../utils/frameTransform';
@@ -19,6 +19,9 @@ type Props = {
   slotWidth?: number;
   slotHeight?: number;
   opacity?: number;
+  /** Desde dónde se reproduce el vídeo, en ms. Con `trimLengthMs` el tramo se repite en bucle. */
+  trimStartMs?: number;
+  trimLengthMs?: number;
 };
 
 const frameStyle = (rect: { left: number; top: number; width: number; height: number }, turn: number): ImageStyle => {
@@ -58,8 +61,11 @@ export function FramedMedia({
   slotWidth,
   slotHeight,
   opacity,
+  trimStartMs,
+  trimLengthMs,
 }: Props) {
   const [measured, setMeasured] = useState({ width: 0, height: 0 });
+  const videoRef = useRef<Video>(null);
   const boxWidth = slotWidth && slotWidth > 0 ? slotWidth : measured.width;
   const boxHeight = slotHeight && slotHeight > 0 ? slotHeight : measured.height;
   const rect = placedMediaRect(boxWidth, boxHeight, displayWidth ?? 0, displayHeight ?? 0, transform);
@@ -67,6 +73,20 @@ export function FramedMedia({
     kind === 'video' && !playVideo
       ? stillImageTurn(stillWidth ?? 0, stillHeight ?? 0, displayWidth ?? 0, displayHeight ?? 0, rotation)
       : 0;
+
+  const startMs = trimStartMs ?? 0;
+  const endMs = trimLengthMs ? startMs + trimLengthMs : null;
+  const loopWithinTrim = useCallback(
+    (status: AVPlaybackStatus) => {
+      if (endMs == null || !status.isLoaded) return;
+      if (status.positionMillis >= endMs) videoRef.current?.setPositionAsync(startMs);
+    },
+    [endMs, startMs]
+  );
+  const videoTrimProps =
+    endMs == null
+      ? {}
+      : { positionMillis: startMs, progressUpdateIntervalMillis: 100, onPlaybackStatusUpdate: loopWithinTrim };
 
   return (
     <View
@@ -81,6 +101,7 @@ export function FramedMedia({
       {rect && kind === 'photo' && <Image source={{ uri }} style={[frameStyle(rect, 0), { opacity }]} />}
       {rect && kind === 'video' && playVideo && (
         <Video
+          ref={videoRef}
           key={sessionKey}
           source={{ uri }}
           style={frameStyle(rect, 0)}
@@ -88,6 +109,7 @@ export function FramedMedia({
           shouldPlay
           isLooping
           isMuted={muted}
+          {...videoTrimProps}
         />
       )}
       {rect && kind === 'video' && !playVideo && (

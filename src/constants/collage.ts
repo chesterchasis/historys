@@ -1,4 +1,4 @@
-import { LayoutType, BorderMode, SlotSpec } from '../types/collage';
+import { BackgroundMode, BorderMode, CollageFormat, LayoutType, SlotSpec } from '../types/collage';
 
 export const LAYOUT_LABELS: Record<LayoutType, string> = {
   'three-horizontal': '3 slots horizontales',
@@ -32,6 +32,36 @@ export const MAX_PHOTO_SCALE = 4;
 
 export const STORY_WIDTH = 1080;
 export const STORY_HEIGHT = 1920;
+
+export const FORMAT_CHOICES: { id: CollageFormat; label: string }[] = [
+  { id: 'story', label: '9:16' },
+  { id: 'feed', label: '4:5' },
+  { id: 'square', label: '1:1' },
+];
+
+export const FORMAT_SIZES: Record<CollageFormat, { width: number; height: number }> = {
+  story: { width: STORY_WIDTH, height: STORY_HEIGHT },
+  feed: { width: 1080, height: 1350 },
+  square: { width: 1080, height: 1080 },
+};
+
+export const getFormatRatio = (format: CollageFormat) => {
+  const size = FORMAT_SIZES[format];
+  return size.width / size.height;
+};
+
+export const BACKGROUND_CHOICES: { id: BackgroundMode; label: string }[] = [
+  { id: 'black', label: 'Negro' },
+  { id: 'white', label: 'Blanco' },
+];
+
+export const BACKGROUND_COLORS: Record<BackgroundMode, string> = {
+  black: '#000000',
+  white: '#ffffff',
+};
+
+/** Las fotos solas se guardan al doble del tamaño del vídeo: 2160 × 3840 en historias. */
+export const PHOTO_EXPORT_SCALE = 2;
 
 export const LAYOUT_SPECS: Record<LayoutType, SlotSpec[]> = {
   'three-horizontal': [

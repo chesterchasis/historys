@@ -93,18 +93,16 @@ Hace falta la build nativa. Expo Go no endereza el vídeo.
 - [ ] La pantalla principal no se desplaza. Se ven a la vez el título, el lienzo 9:16 entero, la barra de herramientas y Exportar.
 - [ ] Probado también en un móvil pequeño (unos 360 × 640 dp): el lienzo se reduce pero sigue entero.
 - [ ] La barra muestra Diseño, Duración, Añadir y Vista previa, cada una con su valor actual (p. ej. «10 s»). La calidad ya no está en la barra: se elige al exportar (fase 09).
-- [ ] Diseño abre un panel con las tres formas y un interruptor Bordes; el lienzo se encoge y cambia en directo. «Listo» cierra el panel.
+- [ ] Diseño abre un panel con las tres formas y un interruptor Bordes; el lienzo se escala para dejarle sitio y cambia en directo. «Listo» cierra el panel.
 - [ ] Duración abre el panel «Duración»; el valor elegido aparece en la barra al cerrar.
 - [ ] Al tocar un hueco, la barra pasa a Cargar/Cambiar, Ajustar, Audio/Silencio, Quitar y Listo, siempre en el mismo sitio. Tocar fuera del lienzo o «Listo» la devuelve a la general.
 - [ ] La barra no cambia mientras se exporta: el progreso se ve en la hoja de exportación (fase 09).
 
 ## Propuesta UX · Fase 02 — Cabecera y menú
 
-- [ ] La cabecera solo tiene el título, «?» y «···». No hay ninguna «R».
-- [ ] «?» abre la guía rápida y su texto ya no menciona la «R».
-- [ ] «···» abre un menú justo debajo del botón, alineado a la derecha, y no queda bajo la cámara ni la barra de estado.
-- [ ] El menú tiene Nuevo collage… (en rojo), Guía rápida y Acerca de con la versión.
-- [ ] Tocar fuera del menú, o el gesto atrás, lo cierra sin hacer nada.
+- [ ] La cabecera solo tiene el título y un botón de ajustes (fase 1 de la propuesta premium). No hay ninguna «R».
+- [ ] El botón de ajustes abre la ventana «Ajustes» (ver la sección de ajustes más abajo).
+- [ ] Tocar fuera de la ventana, «Listo» o el gesto atrás la cierran sin hacer nada.
 - [ ] Nuevo collage… con huecos cargados pide confirmación antes de vaciar; con el collage vacío avisa de que ya lo está.
 - [ ] Acerca de muestra la versión de `app.json`.
 
@@ -200,7 +198,7 @@ La vista previa en bucle con su propio botón Exportar no entra en esta fase.
 - [ ] El peso estimado cambia al cambiar la duración (p. ej. con 30 s, Normal ≈ 56 MB).
 - [ ] «Ahora no», tocar fuera de la hoja o el gesto atrás la cierran sin hacer nada.
 - [ ] «Guardar en galería» lanza el render: la hoja pasa a mostrar el progreso y «Cancelar»; no se puede cerrar tocando fuera.
-- [ ] Al terminar, la hoja se cierra y sale el aviso «Listo» con sus opciones. El vídeo está en el álbum Historys.
+- [ ] Al terminar, la hoja se cierra y sale el aviso «Guardada en tu galería» con sus opciones. El vídeo está en el álbum Historys.
 - [ ] «Cancelar» a mitad de render para el proceso, no sale ningún error y la hoja vuelve a mostrar las opciones con el collage intacto.
 - [ ] Tras cancelar, no queda ningún `collage_*.mp4` en la caché y se puede volver a guardar con normalidad.
 - [ ] Cancelar no cambia a otro codificador: no se lanza un segundo render.
@@ -221,9 +219,80 @@ Para repetir la guía, borra los datos de la app (Ajustes del teléfono → Apps
 - [ ] Las burbujas no salen con un panel abierto, un hueco seleccionado, la hoja de exportación abierta ni mientras se arrastra.
 - [ ] Cerrar y abrir la app de nuevo: las burbujas ya vistas no reaparecen. «Nuevo collage…» tampoco las repite.
 - [ ] Las burbujas no tapan los botones que necesitas: se cierran con un toque.
-- [ ] El aviso final tiene «Ver en galería» como botón principal, «Seguir editando» y, debajo, el enlace «Empezar otra historia».
+- [ ] El aviso final tiene «Seguir editando» como botón principal y, debajo, el enlace «Empezar otra historia». No hay «Ver en galería».
 - [ ] «Seguir editando» deja el collage intacto; «Empezar otra historia» pide confirmación antes de vaciar.
-- [ ] La guía «?» sigue disponible para releerla.
+- [ ] La guía rápida sigue disponible desde Ajustes para releerla.
+
+## Propuesta premium · Fase 1 — Identidad y detalle
+
+Para probar «Auto» hace falta reconstruir la app tras el cambio de `userInterfaceStyle` en `app.json` (`npm run prebuild:android` y volver a instalar). Claro y Oscuro funcionan sin reconstruir.
+
+- [ ] El recuadro del lienzo tiene las esquinas redondeadas. Los huecos, el anillo de selección y el arrastre quedan recortados por esas esquinas.
+- [ ] El archivo exportado sigue siendo rectangular y completo, con las cuatro esquinas.
+- [ ] La miniatura de la hoja de exportación y la del aviso final también son redondeadas.
+- [ ] Arriba solo hay un botón de ajustes con un engranaje. Ya no hay «?» ni «···».
+- [ ] La ventana de ajustes tiene un selector Claro, Oscuro y Auto con el modo actual marcado. Al cambiarlo, toda la app cambia al instante con la ventana abierta.
+- [ ] En Oscuro se leen bien la barra, los paneles, la hoja de exportación, los avisos, la guía y las burbujas de ayuda. Ningún texto queda claro sobre fondo claro.
+- [ ] La barra de estado cambia de iconos claros a oscuros según el modo.
+- [ ] Cerrar la app y abrirla de nuevo conserva el modo elegido. Auto sigue el modo del teléfono.
+- [ ] Al abrir Diseño o Duración, el lienzo se escala y sube con suavidad, sin saltos, y el panel sube desde abajo mientras la barra se desvanece.
+- [ ] Al cerrar el panel (Listo, tocar fuera o tocar un hueco) el lienzo vuelve a su tamaño con la misma suavidad.
+- [ ] Con el panel abierto se puede cambiar de diseño y el interruptor de Bordes responde en toda su altura.
+- [ ] Con el panel abierto, tocar un hueco lo cierra y lo selecciona; mantener y arrastrar cierra el panel y permite intercambiar huecos.
+- [ ] El aviso final dice «Guardada en tu galería» y ya no ofrece «Ver en galería».
+
+## Propuesta premium · Fase 2 — Fondo, formato y recorte
+
+- [ ] El panel Diseño tiene, bajo las tres formas, un selector Formato (9:16, 4:5, 1:1) y otro Fondo (Negro, Blanco), y debajo el interruptor Bordes.
+- [ ] Cambiar de formato cambia la forma del lienzo en pantalla y las miniaturas de las tres formas. Los huecos se reparten bien en los tres formatos, con y sin bordes.
+- [ ] Con 4:5 y bordes, las tres bandas miden lo mismo (1032 × 418 px en el archivo). Con 1:1 el lienzo es cuadrado.
+- [ ] Fondo Blanco: el lienzo, los huecos vacíos, los márgenes y las franjas alrededor de una foto estrecha salen blancos. El «+ Añadir» y el anillo de selección se siguen viendo.
+- [ ] El lienzo blanco tiene un contorno fino para no perderse sobre el fondo de la app.
+- [ ] La vista previa, la miniatura de la hoja de exportación y la del aviso final respetan formato y fondo.
+- [ ] El vídeo exportado mide 1080 × 1920, 1080 × 1350 o 1080 × 1080 según el formato, con el fondo elegido y exactamente lo que se ve en pantalla.
+- [ ] La hoja de exportación y la guía dicen el tamaño correcto.
+- [ ] «Ajustar» en un vídeo más largo que la historia (p. ej. 25 s con 10 s elegidos) muestra la tira «Tramo del vídeo» con una ventana del largo de la historia y las horas de inicio y fin.
+- [ ] Deslizar la ventana, o tocar fuera de ella, la mueve sin salirse de los extremos; al soltar, el vídeo del editor empieza en ese punto y se repite solo dentro del tramo.
+- [ ] En un vídeo igual o más corto que la historia no aparece la tira.
+- [ ] Tras «Hecho», la miniatura del hueco enseña un fotograma del nuevo tramo.
+- [ ] La vista previa del collage y el archivo exportado empiezan en el punto elegido. Una prueba: elige el segundo 12 de un clip de 25 s y comprueba que el vídeo guardado arranca igual que el editor.
+- [ ] Si luego se alarga la duración (p. ej. de 10 a 30 s), el tramo se corre hacia atrás para seguir cabiendo; nunca queda un vídeo corto ni un salto.
+- [ ] Intercambiar dos huecos arrastrando se lleva consigo el tramo elegido.
+
+## Propuesta premium · Fase 3 — Color fiel y fotos solas
+
+Esta versión de FFmpeg no incluye `zscale`, así que la conversión HDR → SDR usa tablas de color y un cambio de primarios (`lutrgb` y `colorchannelmixer`). Se probó en un ordenador con vídeo sintético HLG, pero hace falta compararla con clips reales del S25.
+
+- [ ] Un vídeo del S25 grabado en HDR (HLG) muestra la insignia «HDR» sobre el hueco.
+- [ ] Un vídeo normal (SDR) no muestra «HDR» y se exporta como antes.
+- [ ] Exportar un clip HDR: el resultado ya no sale blanquecino. Los negros son negros, los colores tienen cuerpo y el contraste se parece al del vídeo original reproducido en la galería.
+- [ ] El aviso final de un collage con HDR dice «El HDR se convirtió a SDR para conservar el color.»
+- [ ] Comparar el mismo clip en la galería y en el archivo exportado: no hay un tono verdoso ni rosado general, y la piel se ve natural.
+- [ ] Las luces altas (cielo, focos) no quedan quemadas de golpe: conservan degradado.
+- [ ] Un collage con un clip HDR y un clip SDR: los dos se ven con un nivel de luz parecido.
+- [ ] Las fotos del vídeo exportado conservan su color (un azul de foto no cambia de tono respecto a la pantalla).
+- [ ] Si la conversión HDR fallara en algún dispositivo, el export no se rompe: se repite sin convertir.
+- [ ] En el MP4 final, las propiedades del vídeo indican BT.709 (se puede ver con la información del archivo en la galería o con un reproductor como VLC).
+- [ ] Un collage con solo fotos muestra en la hoja de exportación «Guardar foto» y «Foto · 2160 × 3840 · JPG», sin «Calidad» ni segundos ni «MP4».
+- [ ] Exportar solo fotos guarda un JPG en el álbum Historys de 2160 × 3840 (1080 × 1350 → 2160 × 2700; 1:1 → 2160 × 2160), con la misma composición que se ve en pantalla.
+- [ ] El aviso final de las fotos dice «Foto guardada en tu galería» con el tamaño.
+- [ ] Con solo fotos, «Duración» en la barra aparece atenuada con «Solo vídeo» y no abre el panel. Al añadir un vídeo vuelve a estar activa.
+- [ ] Mezclar fotos y vídeos sigue exportando un MP4 como hasta ahora.
+- [ ] Cancelar la exportación de una foto no deja ningún `collage_*.jpg` en la caché.
+
+## Ventana de ajustes
+
+- [ ] El botón de arriba es un engranaje. Al tocarlo se abre una ventana centrada, con las mismas esquinas redondeadas que el resto de ventanas (guía, avisos), y un fondo atenuado detrás.
+- [ ] La ventana tiene las secciones Apariencia, Diseño, Vídeos, Ayuda y Collage, y abajo «Historys By chesterchasis» con la versión debajo. Si no cabe, se desplaza.
+- [ ] Apariencia: Claro, Oscuro y Auto; Auto sigue al teléfono.
+- [ ] «Recordar mi último diseño» (activado de serie): cambiar formato, fondo, forma, bordes, duración o calidad, cerrar la app del todo y abrirla de nuevo vuelve con ese diseño. Los huecos empiezan vacíos.
+- [ ] Con «Recordar mi último diseño» apagado, la app abre siempre con 3 bandas, 9:16, fondo negro, con bordes, 10 s y calidad Normal.
+- [ ] «Silenciar vídeos al cargarlos»: con el interruptor activado, un vídeo nuevo entra con el altavoz tachado; se puede activar en el hueco. Con él apagado, entran con sonido como antes.
+- [ ] «Guía rápida» cierra los ajustes y abre la guía.
+- [ ] «Repetir la guía de inicio» cierra los ajustes, avisa «Las burbujas de ayuda volverán a salir» y las burbujas vuelven a aparecer en orden.
+- [ ] «Nuevo collage…» (en rojo) cierra los ajustes y pide confirmación antes de vaciar.
+- [ ] En modo oscuro la ventana se lee bien: texto, grupos, interruptores y el selector.
+- [ ] Todos los ajustes se conservan al cerrar y abrir la app.
 
 ## Fuera de esta lista
 

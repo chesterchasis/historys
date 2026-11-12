@@ -6,6 +6,8 @@ import * as ImagePicker from 'expo-image-picker';
 import * as MediaLibrary from 'expo-media-library';
 import {
   Alert,
+  Animated,
+  Easing,
   GestureResponderEvent,
   Linking,
   Modal,
@@ -27,28 +29,42 @@ import { type DockItem, type IconName, ToolDock } from './src/components/ToolDoc
 import { TopBar } from './src/components/TopBar';
 import { ZoomSlider } from './src/components/ZoomSlider';
 import {
+  BACKGROUND_COLORS,
   DURATION_OPTIONS,
+  FORMAT_SIZES,
+  getFormatRatio,
   LAYOUT_CHOICES,
   LAYOUT_SPECS,
   MAX_PHOTO_SCALE,
   MIN_PHOTO_SCALE,
+  PHOTO_EXPORT_SCALE,
   type ExportQuality,
 } from './src/constants/collage';
-import styles from './src/styles/appStyles';
-import { BorderMode, LayoutType, PhotoTransform, SlotMedia, SlotSpec } from './src/types/collage';
+import { TrimBar } from './src/components/TrimBar';
+import { ThemeProvider, useTheme } from './src/theme/ThemeContext';
+import {
+  BackgroundMode,
+  BorderMode,
+  CollageFormat,
+  LayoutType,
+  PhotoTransform,
+  SlotMedia,
+  SlotSpec,
+} from './src/types/collage';
 import {
   ExportCancelledError,
   exportAsImageFallback,
+  exportStillWithFfmpeg,
   exportVideoWithFfmpeg,
   hasVideoSlots,
   isRunningInExpoGo,
-  openDeviceGallery,
   requestCancelExport,
 } from './src/utils/collageExport';
 import { clamp, fitFrame, getSlotBoundsMap } from './src/utils/collageMath';
 import { normalizeQuarterTurn, normalizeTransform, placedMediaRect } from './src/utils/frameTransform';
 import { type HintStep, loadOnboarding, type OnboardingSeen, saveOnboarding } from './src/utils/onboarding';
-import { buildSlotMedia, formatClipDuration } from './src/utils/slotMedia';
+import { buildSlotMedia, clipStrip, clipThumbnail, formatClipDuration } from './src/utils/slotMedia';
+import { canTrimClip, effectiveTrimStartMs } from './src/utils/trim';
 
 /** Altura aproximada de la barra, Exportar y márgenes: la burbuja queda justo encima de la barra. */
 const HINT_BOTTOM = 152;
@@ -59,12 +75,33 @@ const EMPTY_SLOTS: Record<string, SlotMedia> = {
   'slot-3': { kind: 'empty' },
 };
 
+/** Margen entre el panel abierto y el borde inferior del lienzo. */
+const PANEL_GAP = 12;
+const PANEL_ENTER_MS = 240;
+const PANEL_EXIT_MS = 170;
+const CANVAS_SPRING = { damping: 26, stiffness: 240, mass: 1, useNativeDriver: true } as const;
+
+type PanelKind = 'design' | 'duration';
+
 export default function App() {
+  return (
+    <ThemeProvider>
+      <AppContent />
+    </ThemeProvider>
+  );
+}
+
+function AppContent() {
   useFonts(Ionicons.font);
-  const [layout, setLayout] = useState<LayoutType>('three-horizontal');
-  const [borderMode, setBorderMode] = useState<BorderMode>('black');
-  const [duration, setDuration] = useState<number>(10);
-  const [quality, setQuality] = useState<ExportQuality>('medium');
+  const { styles, colors, scheme, settings, updateSettings } = useTheme();
+  // Los ajustes ya están cargados cuando entra la app, así que el diseño recordado se usa desde el primer fotograma.
+  const [startDesign] = useState(() => (settings.rememberDesign ? settings.design : null));
+  const [layout, setLayout] = useState<LayoutType>(startDesign?.layout ?? 'three-horizontal');
+  const [borderMode, setBorderMode] = useState<BorderMode>(startDesign?.borderMode ?? 'black');
+  const [format, setFormat] = useState<CollageFormat>(startDesign?.format ?? 'story');
+  const [background, setBackground] = useState<BackgroundMode>(startDesign?.background ?? 'black');
+  const [duration, setDuration] = useState<number>(startDesign?.duration ?? 10);
+  const [quality, setQuality] = useState<ExportQuality>(startDesign?.quality ?? 'medium');
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
   const [exportProgress, setExportProgress] = useState(0);
@@ -89,8 +126,13 @@ export default function App() {
   const [exportSheetOpen, setExportSheetOpen] = useState(false);
   const [onboarding, setOnboarding] = useState<OnboardingSeen | null>(null);
   const onboardingRef = useRef<OnboardingSeen | null>(null);
-  const [openPanel, setOpenPanel] = useState<'design' | 'duration' | null>(null);
+  const [openPanel, setOpenPanel] = useState<PanelKind | null>(null);
+  const [renderedPanel, setRenderedPanel] = useState<PanelKind | null>(null);
   const [canvasBox, setCanvasBox] = useState({ width: 0, height: 0 });
+  const [zoneRect, setZoneRect] = useState({ y: 0, height: 0 });
+  const [stackRect, setStackRect] = useState({ y: 0, height: 0 });
+  const [screenHeight, setScreenHeight] = useState(0);
+  const [panelHeight, setPanelHeight] = useState(0);
   const [previewBox, setPreviewBox] = useState({ width: 0, height: 0 });
   const [editorBox, setEditorBox] = useState({ width: 0, height: 0 });
   const [draftTransform, setDraftTransform] = useState<PhotoTransform>({
@@ -98,18 +140,78 @@ export default function App() {
     translateX: 0,
     translateY: 0,
   });
+  const [draftTrimMs, setDraftTrimMs] = useState(0);
+  const [trimSession, setTrimSession] = useState(0);
+  const [trimStrip, setTrimStrip] = useState<string[]>([]);
   const [slots, setSlots] = useState<Record<string, SlotMedia>>({ ...EMPTY_SLOTS });
 
   const activeSlots = useMemo(() => LAYOUT_SPECS[layout], [layout]);
   const hasBlackBorders = borderMode === 'black';
-  const previewFrame = fitFrame(previewBox.width, previewBox.height, 9 / 16);
-  const canvasFrame = fitFrame(canvasBox.width, canvasBox.height, 9 / 16);
-  const editingBounds = editingSlotId ? getSlotBoundsMap(layout, hasBlackBorders)[editingSlotId] : undefined;
+  const formatRatio = getFormatRatio(format);
+  const bgColor = BACKGROUND_COLORS[background];
+  const isWhiteBackground = background === 'white';
+  const previewFrame = fitFrame(previewBox.width, previewBox.height, formatRatio);
+  const canvasFrame = fitFrame(canvasBox.width, canvasBox.height, formatRatio);
+
+  // El panel abierto se dibuja encima de la barra. En lugar de redimensionar el lienzo (un salto),
+  // se escala y se sube con una transformación nativa hasta que quede justo encima del panel.
+  const panelShift =
+    openPanel && panelHeight > 0 && screenHeight > 0
+      ? Math.max(0, zoneRect.y + zoneRect.height - (stackRect.y + stackRect.height - panelHeight - PANEL_GAP))
+      : 0;
+  const shrunkFrame = fitFrame(canvasBox.width, canvasBox.height - panelShift, formatRatio);
+  const canvasScaleTarget =
+    canvasFrame.width > 0 && shrunkFrame.width > 0 ? shrunkFrame.width / canvasFrame.width : 1;
+  const canvasLiftTarget = -panelShift / 2;
+  const panelBottom = Math.max(0, screenHeight - (stackRect.y + stackRect.height));
+
+  const canvasScale = useRef(new Animated.Value(1)).current;
+  const canvasLift = useRef(new Animated.Value(0)).current;
+  const panelProgress = useRef(new Animated.Value(0)).current;
+  const idleOpacity = useMemo(
+    () => panelProgress.interpolate({ inputRange: [0, 0.5], outputRange: [1, 0], extrapolate: 'clamp' }),
+    [panelProgress]
+  );
+  const panelRise = useMemo(
+    () => panelProgress.interpolate({ inputRange: [0, 1], outputRange: [28, 0] }),
+    [panelProgress]
+  );
+
+  useEffect(() => {
+    Animated.parallel([
+      Animated.spring(canvasScale, { toValue: canvasScaleTarget, ...CANVAS_SPRING }),
+      Animated.spring(canvasLift, { toValue: canvasLiftTarget, ...CANVAS_SPRING }),
+    ]).start();
+  }, [canvasScale, canvasLift, canvasScaleTarget, canvasLiftTarget]);
+
+  useEffect(() => {
+    if (openPanel) {
+      setRenderedPanel(openPanel);
+      Animated.timing(panelProgress, {
+        toValue: 1,
+        duration: PANEL_ENTER_MS,
+        easing: Easing.out(Easing.cubic),
+        useNativeDriver: true,
+      }).start();
+      return;
+    }
+    Animated.timing(panelProgress, {
+      toValue: 0,
+      duration: PANEL_EXIT_MS,
+      easing: Easing.out(Easing.quad),
+      useNativeDriver: true,
+    }).start(({ finished }) => {
+      if (finished) setRenderedPanel(null);
+    });
+  }, [openPanel, panelProgress]);
+
+  const editingBounds = editingSlotId ? getSlotBoundsMap(layout, hasBlackBorders, format)[editingSlotId] : undefined;
   const editorRatio =
-    editingBounds && editingBounds.height > 0 ? editingBounds.width / editingBounds.height : 9 / 16;
+    editingBounds && editingBounds.height > 0 ? editingBounds.width / editingBounds.height : formatRatio;
   const editorFrame = fitFrame(editorBox.width, editorBox.height, editorRatio);
   const editorMetricsRef = useRef({ slotWidth: 0, slotHeight: 0, mediaWidth: 0, mediaHeight: 0 });
   const editingMedia = editingSlotId ? slots[editingSlotId] : undefined;
+  const editingTrimmable = Boolean(editingMedia && canTrimClip(editingMedia, duration));
   editorMetricsRef.current = {
     slotWidth: editorFrame.width,
     slotHeight: editorFrame.height,
@@ -276,6 +378,20 @@ export default function App() {
 
   const emptySlotCount = activeSlots.length - filledCount;
 
+  useEffect(() => {
+    if (!settings.rememberDesign) return;
+    const design = { layout, format, background, borderMode, duration, quality };
+    if (JSON.stringify(design) !== JSON.stringify(settings.design)) updateSettings({ design });
+  }, [settings.rememberDesign, settings.design, updateSettings, layout, format, background, borderMode, duration, quality]);
+
+  const resetHints = () => {
+    const cleared: OnboardingSeen = { add: false, adjust: false, export: false };
+    onboardingRef.current = cleared;
+    setOnboarding(cleared);
+    saveOnboarding(cleared);
+    showNotice('Las burbujas de ayuda volverán a salir');
+  };
+
   const markHintSeen = (step: HintStep) => {
     const current = onboardingRef.current;
     if (!current || current[step]) return;
@@ -369,7 +485,7 @@ export default function App() {
         const slotId = slotIds[index];
         next[slotId] = {
           ...media,
-          muted: media.kind === 'video' ? prev[slotId]?.muted ?? false : undefined,
+          muted: media.kind === 'video' ? prev[slotId]?.muted ?? settings.muteOnLoad : undefined,
         };
       });
       return next;
@@ -433,19 +549,50 @@ export default function App() {
 
     setEditingSlotId(slotId);
     setDraftTransform(normalizeTransform(getSlotTransform(slotId)));
+    setDraftTrimMs(effectiveTrimStartMs(slotMedia, duration));
+    setTrimStrip([]);
+    setTrimSession((prev) => prev + 1);
   };
 
   const onSavePhotoEditor = () => {
     if (!editingSlotId) return;
+    const slotId = editingSlotId;
+    const media = slots[slotId];
+    const trimmable = Boolean(media && canTrimClip(media, duration));
+    const previousTrim = media ? effectiveTrimStartMs(media, duration) : 0;
+    const nextTrim = trimmable ? Math.round(draftTrimMs) : media?.trimStartMs;
+
     setSlots((prev) => ({
       ...prev,
-      [editingSlotId]: {
-        ...prev[editingSlotId],
+      [slotId]: {
+        ...prev[slotId],
         transform: normalizeTransform(draftTransform),
+        trimStartMs: nextTrim,
       },
     }));
     setEditingSlotId(null);
+
+    // La miniatura del hueco debe enseñar el primer fotograma del tramo elegido.
+    if (trimmable && media?.uri && Math.abs((nextTrim ?? 0) - previousTrim) > 50) {
+      clipThumbnail(media.uri, (nextTrim ?? 0) + 700).then((previewUri) => {
+        if (!previewUri) return;
+        setSlots((prev) =>
+          prev[slotId]?.uri === media.uri ? { ...prev, [slotId]: { ...prev[slotId], previewUri } } : prev
+        );
+      });
+    }
   };
+
+  useEffect(() => {
+    if (!editingSlotId || !editingTrimmable || !editingMedia?.uri || !editingMedia.durationMs) return;
+    let active = true;
+    clipStrip(editingMedia.uri, editingMedia.durationMs, 7).then((frames) => {
+      if (active) setTrimStrip(frames);
+    });
+    return () => {
+      active = false;
+    };
+  }, [editingSlotId, editingTrimmable, editingMedia?.uri, editingMedia?.durationMs]);
 
   const updateExportProgress = (nextValue: number) => {
     const clamped = clamp(nextValue, 0, 1);
@@ -503,40 +650,48 @@ export default function App() {
         return;
       }
 
+      const emptyNote =
+        emptySlotCount > 0 ? ` Los huecos vacíos quedaron en ${isWhiteBackground ? 'blanco' : 'negro'}.` : '';
+      const common = {
+        activeSlots,
+        slots,
+        layout,
+        hasBlackBorders,
+        format,
+        background,
+        onProgress: (value: number) => updateExportProgress(value),
+      };
+
       try {
-        setExportStatus('Renderizando video...');
-        updateExportProgress(0.08);
-        const exported = await exportVideoWithFfmpeg({
-          activeSlots,
-          slots,
-          layout,
-          hasBlackBorders,
-          duration,
-          quality,
-          onProgress: (value) => updateExportProgress(value),
-        });
-        setExportStatus('Guardando video en galería...');
-        updateExportProgress(1);
-        const codecLine = exported.h264
-          ? null
-          : exported.codec
-            ? `Guardado en formato compatible (${exported.codec.toUpperCase()}).`
-            : null;
-        const videoLines = [
-          emptySlotCount > 0
-            ? 'Tu historia se guardó en el álbum Historys de la galería. Los huecos vacíos quedaron en negro.'
-            : 'Tu historia se guardó en el álbum Historys de la galería.',
-          ...(codecLine ? ['', codecLine] : []),
-        ];
-        setExportSheetOpen(false);
-        setFeedbackDialog({
-          kind: 'ready',
-          title: 'Listo',
-          body: videoLines.join('\n'),
-        });
+        if (containsVideo) {
+          setExportStatus('Renderizando vídeo...');
+          updateExportProgress(0.08);
+          const exported = await exportVideoWithFfmpeg({ ...common, duration, quality });
+          setExportStatus('Guardando vídeo en galería...');
+          updateExportProgress(1);
+          const lines = [`Está en el álbum Historys.${emptyNote}`];
+          if (exported.hdrConverted) lines.push('El HDR se convirtió a SDR para conservar el color.');
+          if (!exported.h264 && exported.codec) {
+            lines.push(`Guardado en formato compatible (${exported.codec.toUpperCase()}).`);
+          }
+          setExportSheetOpen(false);
+          setFeedbackDialog({ kind: 'ready', title: 'Guardada en tu galería', body: lines.join('\n') });
+        } else {
+          setExportStatus('Renderizando foto...');
+          updateExportProgress(0.08);
+          const photo = await exportStillWithFfmpeg(common);
+          setExportStatus('Guardando foto en galería...');
+          updateExportProgress(1);
+          setExportSheetOpen(false);
+          setFeedbackDialog({
+            kind: 'ready',
+            title: 'Foto guardada en tu galería',
+            body: `${photo.width} × ${photo.height} px, en el álbum Historys.${emptyNote}`,
+          });
+        }
       } catch (error) {
         if (error instanceof ExportCancelledError) return;
-        console.error('Video export failed', error);
+        console.error('Export failed', error);
 
         // Si hay videos en los slots, el fallback de imagen no sirve (saldría negro).
         if (containsVideo) {
@@ -549,19 +704,15 @@ export default function App() {
 
         setExportStatus('Guardando como imagen...');
         updateExportProgress(0.4);
-        await exportAsImageFallback({ exportCanvasRef });
+        await exportAsImageFallback({ exportCanvasRef, format });
         setExportStatus('Guardando imagen en galería...');
         updateExportProgress(1);
-        const fallbackBase =
-          'El vídeo no estaba disponible en este dispositivo, así que guardamos tu collage como imagen en el álbum Historys.';
-        const imageLines = [
-          emptySlotCount > 0 ? `${fallbackBase} Los huecos vacíos quedaron en negro.` : fallbackBase,
-        ];
+        const size = FORMAT_SIZES[format];
         setExportSheetOpen(false);
         setFeedbackDialog({
           kind: 'ready',
-          title: 'Listo',
-          body: imageLines.join('\n'),
+          title: 'Foto guardada en tu galería',
+          body: `No se pudo usar el modo de alta resolución, así que se guardó a ${size.width} × ${size.height} px en el álbum Historys.${emptyNote}`,
         });
       }
     } catch {
@@ -610,6 +761,8 @@ export default function App() {
   if (notice) captionText = notice;
   if (isDraggingSlot) captionText = 'Suelta sobre otro hueco para intercambiarlos';
 
+  const hasVideo = hasVideoSlots(activeSlots, slots);
+
   const globalDockItems: DockItem[] = [
     {
       key: 'design',
@@ -622,7 +775,8 @@ export default function App() {
       key: 'duration',
       label: 'Duración',
       icon: 'time-outline',
-      value: `${duration} s`,
+      value: hasVideo ? `${duration} s` : 'Solo vídeo',
+      disabled: !hasVideo,
       onPress: () => togglePanel('duration'),
     },
     {
@@ -727,7 +881,11 @@ export default function App() {
           media === 'empty' ? `${holeLabel}, vacío` : media === 'photo' ? `${holeLabel}, foto` : `${holeLabel}, vídeo`
         }
         onPress={() => onSlotPress(slot.id)}
-        style={[styles.slot, slot.style === 'horizontal' ? styles.horizontalSlot : styles.verticalSlot]}
+        style={[
+          styles.slot,
+          slot.style === 'horizontal' ? styles.horizontalSlot : styles.verticalSlot,
+          { backgroundColor: bgColor },
+        ]}
       >
         {media === 'photo' && slotMedia.uri && (
           <FramedMedia
@@ -758,6 +916,7 @@ export default function App() {
               <Ionicons name="volume-mute" size={12} color="#f5f3ef" />
             )}
             <Ionicons name="play" size={10} color="#f5f3ef" />
+            {slotMedia.hdr ? <Text style={styles.videoBadgeText}>HDR</Text> : null}
             {slotMedia.durationMs ? (
               <Text style={styles.videoBadgeText}>{formatClipDuration(slotMedia.durationMs)}</Text>
             ) : null}
@@ -766,16 +925,24 @@ export default function App() {
 
         {media === 'empty' && (
           <View style={styles.slotEmpty}>
-            <View style={styles.slotEmptyPlus}>
-              <Text style={styles.slotEmptyPlusText}>+</Text>
+            <View style={[styles.slotEmptyPlus, isWhiteBackground && styles.slotEmptyPlusOnWhite]}>
+              <Text style={[styles.slotEmptyPlusText, isWhiteBackground && styles.slotEmptyTextOnWhite]}>+</Text>
             </View>
-            <Text style={styles.slotEmptyLabel} numberOfLines={1}>
+            <Text
+              style={[styles.slotEmptyLabel, isWhiteBackground && styles.slotEmptyTextOnWhite]}
+              numberOfLines={1}
+            >
               Añadir
             </Text>
           </View>
         )}
 
-        {isSelected && <View pointerEvents="none" style={styles.slotSelectedRing} />}
+        {isSelected && (
+          <View
+            pointerEvents="none"
+            style={[styles.slotSelectedRing, isWhiteBackground && styles.slotSelectedRingOnWhite]}
+          />
+        )}
       </Pressable>
     );
   };
@@ -788,7 +955,11 @@ export default function App() {
     return (
       <View
         key={`preview-${slot.id}`}
-        style={[styles.previewSlot, slot.style === 'horizontal' ? styles.horizontalSlot : styles.verticalSlot]}
+        style={[
+          styles.previewSlot,
+          slot.style === 'horizontal' ? styles.horizontalSlot : styles.verticalSlot,
+          { backgroundColor: bgColor },
+        ]}
       >
         {media === 'photo' && slotMedia.uri && (
           <FramedMedia
@@ -810,6 +981,10 @@ export default function App() {
             playVideo
             muted={Boolean(slotMedia.muted) || slotMedia.hasAudio === false}
             sessionKey={previewSession}
+            trimStartMs={
+              canTrimClip(slotMedia, duration) ? effectiveTrimStartMs(slotMedia, duration) : undefined
+            }
+            trimLengthMs={canTrimClip(slotMedia, duration) ? duration * 1000 : undefined}
           />
         )}
       </View>
@@ -824,7 +999,11 @@ export default function App() {
     return (
       <View
         key={`export-${slot.id}`}
-        style={[styles.exportSlot, slot.style === 'horizontal' ? styles.horizontalSlot : styles.verticalSlot]}
+        style={[
+          styles.exportSlot,
+          slot.style === 'horizontal' ? styles.horizontalSlot : styles.verticalSlot,
+          { backgroundColor: bgColor },
+        ]}
       >
         {media === 'photo' && slotMedia.uri && (
           <FramedMedia
@@ -849,7 +1028,7 @@ export default function App() {
           />
         )}
 
-        {media === 'empty' && <View style={styles.exportEmptyFill} />}
+        {media === 'empty' && <View style={[styles.exportEmptyFill, { backgroundColor: bgColor }]} />}
       </View>
     );
   };
@@ -857,9 +1036,19 @@ export default function App() {
   return (
     <SafeAreaProvider initialMetrics={initialWindowMetrics}>
     <SafeAreaView style={styles.safeArea}>
-      <StatusBar style="dark" />
-      <View style={styles.screen}>
-        <TopBar onHelp={() => setInfoModalVisible(true)} onNewCollage={onRequestResetCollage} />
+      <StatusBar style={scheme === 'dark' ? 'light' : 'dark'} />
+      <View
+        style={styles.screen}
+        onLayout={(event) => {
+          const { height } = event.nativeEvent.layout;
+          setScreenHeight((prev) => (prev === height ? prev : height));
+        }}
+      >
+        <TopBar
+          onHelp={() => setInfoModalVisible(true)}
+          onNewCollage={onRequestResetCollage}
+          onResetHints={resetHints}
+        />
 
         <Pressable
           style={styles.canvasZone}
@@ -869,22 +1058,26 @@ export default function App() {
             setOpenPanel(null);
           }}
           onLayout={(event) => {
-            const { width, height } = event.nativeEvent.layout;
+            const { width, height, y } = event.nativeEvent.layout;
             setCanvasBox((prev) =>
               prev.width === width && prev.height === height ? prev : { width, height }
             );
+            setZoneRect((prev) => (prev.y === y && prev.height === height ? prev : { y, height }));
           }}
         >
-          <View style={[styles.canvasFrame, canvasFrame]}>
+          <Animated.View style={{ transform: [{ translateY: canvasLift }, { scale: canvasScale }] }}>
+          <View style={[styles.canvasFrame, canvasFrame, { backgroundColor: bgColor }]}>
             <CollageLayout
               layout={layout}
               hasBlackBorders={hasBlackBorders}
+              format={format}
               slots={activeSlots}
               renderSlot={renderSlot}
             />
             <SlotGestureLayer
               layout={layout}
               hasBlackBorders={hasBlackBorders}
+              format={format}
               slots={activeSlots}
               width={canvasFrame.width}
               height={canvasFrame.height}
@@ -899,31 +1092,30 @@ export default function App() {
               onDoubleTapSlot={onSlotDoubleTap}
               onTapOutside={onTapOutsideSlots}
               onSwap={onSwapSlots}
-              onDragChange={setIsDraggingSlot}
+              onDragChange={(active) => {
+                setIsDraggingSlot(active);
+                if (active) setOpenPanel(null);
+              }}
             />
+            {isWhiteBackground && <View pointerEvents="none" style={styles.canvasOutline} />}
           </View>
+          </Animated.View>
         </Pressable>
 
-        {!openPanel && <Text style={styles.caption}>{captionText}</Text>}
-
-        {openPanel === 'design' ? (
-          <DesignPanel
-            layout={layout}
-            borderMode={borderMode}
-            onLayoutChange={setLayout}
-            onBorderModeChange={setBorderMode}
-            onClose={() => setOpenPanel(null)}
-          />
-        ) : openPanel === 'duration' ? (
-          <DurationPanel
-            duration={duration}
-            durationOptions={DURATION_OPTIONS}
-            onDurationChange={setDuration}
-            onClose={() => setOpenPanel(null)}
-          />
-        ) : (
-          <ToolDock items={dockItems} />
-        )}
+        <View
+          style={styles.bottomStack}
+          onLayout={(event) => {
+            const { y, height } = event.nativeEvent.layout;
+            setStackRect((prev) => (prev.y === y && prev.height === height ? prev : { y, height }));
+          }}
+        >
+          <Animated.View style={{ opacity: idleOpacity }}>
+            <Text style={styles.caption}>{captionText}</Text>
+          </Animated.View>
+          <Animated.View style={{ opacity: idleOpacity }} pointerEvents={openPanel ? 'none' : 'auto'}>
+            <ToolDock items={dockItems} />
+          </Animated.View>
+        </View>
 
         <Pressable
           style={[styles.exportButton, isExporting && styles.exportButtonDisabled]}
@@ -933,6 +1125,41 @@ export default function App() {
         >
           <Text style={styles.exportButtonText}>{isExporting ? 'Exportando...' : 'Exportar'}</Text>
         </Pressable>
+
+        {renderedPanel && (
+          <Animated.View
+            pointerEvents={openPanel ? 'auto' : 'none'}
+            onLayout={(event) => {
+              const { height } = event.nativeEvent.layout;
+              setPanelHeight((prev) => (Math.abs(prev - height) < 1 ? prev : height));
+            }}
+            style={[
+              styles.panelOverlay,
+              { bottom: panelBottom, opacity: panelProgress, transform: [{ translateY: panelRise }] },
+            ]}
+          >
+            {renderedPanel === 'design' ? (
+              <DesignPanel
+                layout={layout}
+                borderMode={borderMode}
+                format={format}
+                background={background}
+                onLayoutChange={setLayout}
+                onBorderModeChange={setBorderMode}
+                onFormatChange={setFormat}
+                onBackgroundChange={setBackground}
+                onClose={() => setOpenPanel(null)}
+              />
+            ) : (
+              <DurationPanel
+                duration={duration}
+                durationOptions={DURATION_OPTIONS}
+                onDurationChange={setDuration}
+                onClose={() => setOpenPanel(null)}
+              />
+            )}
+          </Animated.View>
+        )}
 
         {activeHint === 'add' && (
           <Coachmark
@@ -966,6 +1193,9 @@ export default function App() {
 
       <ExportSheet
         visible={exportSheetOpen}
+        mode={hasVideo ? 'video' : 'photo'}
+        aspectRatio={formatRatio}
+        thumbnailBackground={bgColor}
         isExporting={isExporting}
         progress={exportProgress}
         status={exportStatus}
@@ -973,20 +1203,33 @@ export default function App() {
           <CollageLayout
             layout={layout}
             hasBlackBorders={hasBlackBorders}
+            format={format}
             slots={activeSlots}
             renderSlot={renderExportSlot}
           />
         }
-        summaryLines={[
-          `${filledCount} de ${activeSlots.length} huecos · ${duration} s`,
-          audibleCount >= 2
-            ? `Sonido: ${audibleCount} vídeos mezclados`
-            : audibleCount === 1
-              ? 'Sonido: 1 vídeo'
-              : 'Sin sonido',
-          '1080 × 1920 · MP4',
-          emptySlotCount > 0 ? 'Álbum Historys · huecos vacíos en negro' : 'Álbum Historys',
-        ]}
+        summaryLines={
+          hasVideo
+            ? [
+                `${filledCount} de ${activeSlots.length} huecos · ${duration} s`,
+                audibleCount >= 2
+                  ? `Sonido: ${audibleCount} vídeos mezclados`
+                  : audibleCount === 1
+                    ? 'Sonido: 1 vídeo'
+                    : 'Sin sonido',
+                `${FORMAT_SIZES[format].width} × ${FORMAT_SIZES[format].height} · MP4`,
+                emptySlotCount > 0
+                  ? `Álbum Historys · huecos vacíos en ${isWhiteBackground ? 'blanco' : 'negro'}`
+                  : 'Álbum Historys',
+              ]
+            : [
+                `${filledCount} de ${activeSlots.length} huecos · solo fotos`,
+                `Foto · ${FORMAT_SIZES[format].width * PHOTO_EXPORT_SCALE} × ${FORMAT_SIZES[format].height * PHOTO_EXPORT_SCALE} · JPG`,
+                emptySlotCount > 0
+                  ? `Álbum Historys · huecos vacíos en ${isWhiteBackground ? 'blanco' : 'negro'}`
+                  : 'Álbum Historys',
+              ]
+        }
         durationSeconds={duration}
         quality={quality}
         onQualityChange={setQuality}
@@ -999,11 +1242,12 @@ export default function App() {
         <View
           ref={exportCanvasRef}
           collapsable={false}
-          style={styles.exportCanvas}
+          style={[styles.exportCanvas, { aspectRatio: formatRatio, backgroundColor: bgColor }]}
         >
           <CollageLayout
             layout={layout}
             hasBlackBorders={hasBlackBorders}
+            format={format}
             slots={activeSlots}
             renderSlot={renderExportSlot}
           />
@@ -1128,10 +1372,16 @@ export default function App() {
           />
           {feedbackDialog.kind === 'ready' && (
             <View style={styles.libraryModalCard}>
-              <View style={styles.successThumb}>
+              <View
+                style={[
+                  styles.successThumb,
+                  { width: Math.round(192 * formatRatio), backgroundColor: bgColor },
+                ]}
+              >
                 <CollageLayout
                   layout={layout}
                   hasBlackBorders={hasBlackBorders}
+                  format={format}
                   slots={activeSlots}
                   renderSlot={renderExportSlot}
                 />
@@ -1163,23 +1413,10 @@ export default function App() {
                 <View style={styles.successActions}>
                   <Pressable
                     style={[styles.slotButton, { alignItems: 'center' }]}
-                    onPress={async () => {
-                      const opened = await openDeviceGallery();
-                      if (!opened) {
-                        Alert.alert(
-                          'Galería',
-                          'No se pudo abrir la galería. El archivo está en el álbum Historys.'
-                        );
-                      }
-                    }}
-                  >
-                    <Text style={styles.slotButtonText}>Ver en galería</Text>
-                  </Pressable>
-                  <Pressable
-                    style={[styles.slotButtonGhost, { alignItems: 'center' }]}
+                    accessibilityRole="button"
                     onPress={() => setFeedbackDialog({ kind: 'closed' })}
                   >
-                    <Text style={styles.slotButtonGhostText}>Seguir editando</Text>
+                    <Text style={styles.slotButtonText}>Seguir editando</Text>
                   </Pressable>
                   <Pressable
                     style={styles.successLink}
@@ -1234,8 +1471,10 @@ export default function App() {
                     Toca <Text style={styles.infoInlineStrong}>Diseño</Text> en la barra de abajo y cambia entre{' '}
                     <Text style={styles.infoInlineStrong}>3 bandas</Text>,{' '}
                     <Text style={styles.infoInlineStrong}>2+1</Text> o{' '}
-                    <Text style={styles.infoInlineStrong}>1+2</Text> sin perder lo que ya habías cargado. El interruptor{' '}
-                    <Text style={styles.infoInlineStrong}>Bordes</Text> quita o pone el margen negro.
+                    <Text style={styles.infoInlineStrong}>1+2</Text> sin perder lo que ya habías cargado. Elige el{' '}
+                    <Text style={styles.infoInlineStrong}>Formato</Text> (9:16 para historias, 4:5 para el feed o 1:1) y
+                    el <Text style={styles.infoInlineStrong}>Fondo</Text> (negro o blanco). El interruptor{' '}
+                    <Text style={styles.infoInlineStrong}>Bordes</Text> quita o pone el margen entre huecos.
                   </Text>
                 </View>
               </View>
@@ -1256,7 +1495,7 @@ export default function App() {
                       <Text style={styles.infoInlineStrong}>• Cambiar:</Text> sustituye el contenido por otra foto o vídeo.
                     </Text>
                     <Text style={styles.infoTagItem}>
-                      <Text style={styles.infoInlineStrong}>• Ajustar:</Text> mueve y haz zoom sobre la proporción exacta de ese hueco.
+                      <Text style={styles.infoInlineStrong}>• Ajustar:</Text> mueve y haz zoom sobre la proporción exacta de ese hueco. En un vídeo más largo que la historia, desliza el tramo para elegir qué parte se usa.
                     </Text>
                     <Text style={styles.infoTagItem}>
                       <Text style={styles.infoInlineStrong}>• Sonido:</Text> activa o silencia cada vídeo (el altavoz se tacha cuando está silenciado). Si hay dos o más con sonido, se mezclan en una sola pista.
@@ -1268,7 +1507,7 @@ export default function App() {
                       <Text style={styles.infoInlineStrong}>• Mantener y arrastrar:</Text> suelta un hueco sobre otro para intercambiarlos; el encuadre y el sonido viajan con él.
                     </Text>
                     <Text style={styles.infoTagItem}>
-                      <Text style={styles.infoInlineStrong}>• Quitar:</Text> deja ese hueco en negro (no hace falta llenar los tres).
+                      <Text style={styles.infoInlineStrong}>• Quitar:</Text> deja ese hueco vacío, con el color del fondo (no hace falta llenar los tres).
                     </Text>
                   </View>
                 </View>
@@ -1285,21 +1524,25 @@ export default function App() {
                     <Text style={styles.infoInlineStrong}>5s a 30s</Text>). Al pulsar{' '}
                     <Text style={styles.infoInlineStrong}>Exportar</Text> eliges la calidad (
                     <Text style={styles.infoInlineStrong}>Ligera, Normal o Máxima</Text>, con el peso aproximado) y
-                    guardas. Puedes cancelar mientras se genera. El vídeo se guarda en{' '}
-                    <Text style={styles.infoInlineStrong}>1080×1920 (H.264)</Text> dentro del álbum{' '}
-                    <Text style={styles.infoInlineStrong}>Historys</Text> y tu collage sigue en pantalla por si quieres hacer otro cambio.
+                    guardas. Puedes cancelar mientras se genera. El vídeo se guarda en H.264 (
+                    <Text style={styles.infoInlineStrong}>1080×1920</Text> en historias) dentro del álbum{' '}
+                    <Text style={styles.infoInlineStrong}>Historys</Text>. Si solo hay fotos, se guarda una{' '}
+                    <Text style={styles.infoInlineStrong}>foto JPG a doble resolución</Text>. Tu collage sigue en
+                    pantalla por si quieres hacer otro cambio.
                   </Text>
                 </View>
               </View>
 
               <View style={styles.infoQuickCard}>
-                <Text style={styles.infoQuickTitle}>Menú y etiquetas</Text>
+                <Text style={styles.infoQuickTitle}>Ajustes y etiquetas</Text>
                 <View style={styles.infoQuickRow}>
                   <View style={styles.infoKeyPill}>
-                    <Text style={styles.infoKeyPillText}>···</Text>
+                    <Ionicons name="settings-outline" size={14} color={colors.onInk} />
                   </View>
                   <Text style={styles.infoQuickText}>
-                    Nuevo collage… vacía los 3 huecos y vuelve a 10s (pide confirmación).
+                    Arriba a la derecha: cambia entre aspecto claro, oscuro o automático, elige si se recuerda tu último
+                    diseño o si los vídeos entran silenciados, abre esta guía o empieza un Nuevo collage (vacía los 3
+                    huecos y vuelve a 10s, con confirmación).
                   </Text>
                 </View>
                 <View style={styles.infoQuickRow}>
@@ -1350,11 +1593,12 @@ export default function App() {
               }}
             >
               <View
-                style={[styles.previewCanvas, previewFrame]}
+                style={[styles.previewCanvas, previewFrame, { backgroundColor: bgColor }]}
               >
                 <CollageLayout
                   layout={layout}
                   hasBlackBorders={hasBlackBorders}
+                  format={format}
                   slots={activeSlots}
                   renderSlot={renderPreviewSlot}
                 />
@@ -1440,7 +1684,7 @@ export default function App() {
                   />
                 </View>
               )}
-              <View style={styles.editorCanvas}>
+              <View style={[styles.editorCanvas, { backgroundColor: bgColor }]}>
                 {editingSlotId && editingMedia?.uri && editingMedia.kind === 'photo' && (
                   <FramedMedia
                     uri={editingMedia.uri}
@@ -1461,6 +1705,9 @@ export default function App() {
                     transform={draftTransform}
                     playVideo
                     muted
+                    sessionKey={trimSession}
+                    trimStartMs={editingTrimmable ? draftTrimMs : undefined}
+                    trimLengthMs={editingTrimmable ? duration * 1000 : undefined}
                     slotWidth={editorFrame.width}
                     slotHeight={editorFrame.height}
                   />
@@ -1479,6 +1726,20 @@ export default function App() {
           </View>
 
           <Text style={styles.editorHint}>Arrastra para mover · pellizca o desliza para el zoom</Text>
+
+          {editingTrimmable && editingMedia?.durationMs ? (
+            <TrimBar
+              clipMs={editingMedia.durationMs}
+              windowMs={duration * 1000}
+              startMs={draftTrimMs}
+              stripUris={trimStrip}
+              onChange={setDraftTrimMs}
+              onRelease={(next) => {
+                setDraftTrimMs(next);
+                setTrimSession((prev) => prev + 1);
+              }}
+            />
+          ) : null}
 
           <View style={styles.editorZoomBlock}>
             <Text style={styles.editorZoomLabel}>Zoom {(draftTransform.scale * 100).toFixed(0)}%</Text>

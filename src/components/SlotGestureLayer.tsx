@@ -1,12 +1,13 @@
 import { type ReactNode, useEffect, useRef, useState } from 'react';
 import { Animated, PanResponder, StyleSheet, View } from 'react-native';
-import { STORY_HEIGHT, STORY_WIDTH } from '../constants/collage';
-import { LayoutType, SlotSpec } from '../types/collage';
+import { FORMAT_SIZES } from '../constants/collage';
+import { CollageFormat, LayoutType, SlotSpec } from '../types/collage';
 import { getSlotBoundsMap } from '../utils/collageMath';
 
 type Props = {
   layout: LayoutType;
   hasBlackBorders: boolean;
+  format: CollageFormat;
   slots: SlotSpec[];
   width: number;
   height: number;
@@ -42,10 +43,11 @@ export function SlotGestureLayer(props: Props) {
   const lastTapRef = useRef<{ slotId: string; time: number } | null>(null);
 
   const getRects = (): Rect[] => {
-    const { layout, hasBlackBorders, slots, width, height } = propsRef.current;
-    const bounds = getSlotBoundsMap(layout, hasBlackBorders);
-    const scaleX = width / STORY_WIDTH;
-    const scaleY = height / STORY_HEIGHT;
+    const { layout, hasBlackBorders, format, slots, width, height } = propsRef.current;
+    const bounds = getSlotBoundsMap(layout, hasBlackBorders, format);
+    const size = FORMAT_SIZES[format];
+    const scaleX = width / size.width;
+    const scaleY = height / size.height;
     return slots.flatMap((slot) => {
       const bound = bounds[slot.id];
       if (!bound) return [];
