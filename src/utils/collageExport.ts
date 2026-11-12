@@ -41,6 +41,26 @@ type ExportImageOptions = {
   exportCanvasRef: { current: any };
 };
 
+export class ExportCancelledError extends Error {
+  constructor() {
+    super('EXPORT_CANCELLED');
+    this.name = 'ExportCancelledError';
+  }
+}
+
+let cancelRequested = false;
+
+/** Pide parar el render en curso. El temporal se borra en el `finally` de la exportación. */
+export const requestCancelExport = async () => {
+  cancelRequested = true;
+  try {
+    const ffmpeg = await import('@wokcito/ffmpeg-kit-react-native');
+    await ffmpeg.FFmpegKit.cancel();
+  } catch {
+    // Sin módulo nativo no hay render que parar.
+  }
+};
+
 const deleteCacheFile = async (uri: string) => {
   try {
     const file = new FileSystem.File(uri);
@@ -264,6 +284,8 @@ export const exportVideoWithFfmpeg = async ({
     );
   }
 
+  cancelRequested = false;
+
   // Limitamos a 30 s máximo por requisito de producto.
   const safeDuration = clamp(Math.round(duration), 1, 30);
 
@@ -393,6 +415,9 @@ export const exportVideoWithFfmpeg = async ({
     });
 
     const returnCode = await session.getReturnCode();
+    if (cancelRequested || ReturnCode.isCancel(returnCode)) {
+      throw new ExportCancelledError();
+    }
     if (!ReturnCode.isSuccess(returnCode)) {
       const output = typeof session?.getOutput === 'function' ? await session.getOutput() : '';
       const failStack =
@@ -406,11 +431,13 @@ export const exportVideoWithFfmpeg = async ({
   let lastError: unknown;
   try {
     for (const args of attempts) {
+      if (cancelRequested) throw new ExportCancelledError();
       try {
         await runFfmpeg(buildCommand(args));
         encoded = true;
         break;
       } catch (error) {
+        if (error instanceof ExportCancelledError) throw error;
         lastError = error;
         onProgress?.(0.05);
       }
@@ -420,6 +447,7 @@ export const exportVideoWithFfmpeg = async ({
     }
 
     const codec = await probeOutputVideoCodec(outputUri);
+    if (cancelRequested) throw new ExportCancelledError();
     onProgress?.(1);
     await saveToGallery(outputUri);
     return { codec, h264: isH264Codec(codec) };

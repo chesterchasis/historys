@@ -20,9 +20,9 @@ export const BORDER_LABELS: Record<BorderMode, string> = {
 export const DURATION_OPTIONS = [5, 10, 15, 30];
 
 export const QUALITY_OPTIONS = [
-  { id: 'low', label: 'Baja' },
-  { id: 'medium', label: 'Media' },
-  { id: 'high', label: 'Alta' },
+  { id: 'low', label: 'Ligera', mbps: 6 },
+  { id: 'medium', label: 'Normal', mbps: 15 },
+  { id: 'high', label: 'Máxima', mbps: 28 },
 ] as const;
 
 export type ExportQuality = (typeof QUALITY_OPTIONS)[number]['id'];

@@ -18,6 +18,7 @@ type Props = {
   sessionKey?: number;
   slotWidth?: number;
   slotHeight?: number;
+  opacity?: number;
 };
 
 const frameStyle = (rect: { left: number; top: number; width: number; height: number }, turn: number): ImageStyle => {
@@ -56,6 +57,7 @@ export function FramedMedia({
   sessionKey = 0,
   slotWidth,
   slotHeight,
+  opacity,
 }: Props) {
   const [measured, setMeasured] = useState({ width: 0, height: 0 });
   const boxWidth = slotWidth && slotWidth > 0 ? slotWidth : measured.width;
@@ -76,7 +78,7 @@ export function FramedMedia({
         setMeasured((prev) => (prev.width === width && prev.height === height ? prev : { width, height }));
       }}
     >
-      {rect && kind === 'photo' && <Image source={{ uri }} style={frameStyle(rect, 0)} />}
+      {rect && kind === 'photo' && <Image source={{ uri }} style={[frameStyle(rect, 0), { opacity }]} />}
       {rect && kind === 'video' && playVideo && (
         <Video
           key={sessionKey}
@@ -88,7 +90,9 @@ export function FramedMedia({
           isMuted={muted}
         />
       )}
-      {rect && kind === 'video' && !playVideo && <Image source={{ uri }} style={frameStyle(rect, turn)} />}
+      {rect && kind === 'video' && !playVideo && (
+        <Image source={{ uri }} style={[frameStyle(rect, turn), { opacity }]} />
+      )}
       {!rect && playVideo && (
         <Video
           key={sessionKey}

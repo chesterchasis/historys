@@ -4,6 +4,15 @@ import { STORY_HEIGHT, STORY_WIDTH } from '../constants/collage';
 export const clamp = (value: number, min: number, max: number) =>
   Math.max(min, Math.min(max, value));
 
+export const fitFrame = (width: number, height: number, ratio: number) => {
+  if (width <= 0 || height <= 0) return { width: 0, height: 0 };
+  const safeWidth = Math.max(0, width - 1);
+  const safeHeight = Math.max(0, height - 1);
+  const heightFromWidth = safeWidth / ratio;
+  if (heightFromWidth <= safeHeight) return { width: safeWidth, height: heightFromWidth };
+  return { width: safeHeight * ratio, height: safeHeight };
+};
+
 export const getSlotBoundsMap = (
   layout: LayoutType,
   hasBlackBorders: boolean

@@ -37,6 +37,8 @@ export type SlotMedia = {
   rotation?: number;
   /** False when ffprobe found no audio stream. Unset if the probe did not run. */
   hasAudio?: boolean;
+  /** Clip length in milliseconds, as reported by the picker. Videos only. */
+  durationMs?: number;
 };
 
 export type SlotBounds = {

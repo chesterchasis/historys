@@ -1,12 +1,13 @@
+import { Ionicons } from '@expo/vector-icons';
+import { useFonts } from 'expo-font';
 import { StatusBar } from 'expo-status-bar';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import * as ImagePicker from 'expo-image-picker';
 import * as MediaLibrary from 'expo-media-library';
-import * as VideoThumbnails from 'expo-video-thumbnails';
 import {
   Alert,
   GestureResponderEvent,
-  Image,
+  Linking,
   Modal,
   PanResponder,
   Pressable,
@@ -17,39 +18,40 @@ import {
 } from 'react-native';
 import { initialWindowMetrics, SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import { CollageLayout } from './src/components/CollageLayout';
+import { Coachmark } from './src/components/Coachmark';
+import { ExportSheet } from './src/components/ExportSheet';
 import { FramedMedia } from './src/components/FramedMedia';
-import { LayoutThumb } from './src/components/LayoutThumb';
+import { DesignPanel, DurationPanel } from './src/components/SettingsPanels';
+import { SlotGestureLayer } from './src/components/SlotGestureLayer';
+import { type DockItem, type IconName, ToolDock } from './src/components/ToolDock';
+import { TopBar } from './src/components/TopBar';
+import { ZoomSlider } from './src/components/ZoomSlider';
 import {
-  BORDER_LABELS,
   DURATION_OPTIONS,
   LAYOUT_CHOICES,
   LAYOUT_SPECS,
   MAX_PHOTO_SCALE,
   MIN_PHOTO_SCALE,
-  QUALITY_OPTIONS,
   type ExportQuality,
 } from './src/constants/collage';
 import styles from './src/styles/appStyles';
-import { BorderMode, LayoutType, MediaType, PhotoTransform, SlotMedia, SlotSpec } from './src/types/collage';
+import { BorderMode, LayoutType, PhotoTransform, SlotMedia, SlotSpec } from './src/types/collage';
 import {
+  ExportCancelledError,
   exportAsImageFallback,
   exportVideoWithFfmpeg,
   hasVideoSlots,
   isRunningInExpoGo,
   openDeviceGallery,
-  probeVideoOrientation,
+  requestCancelExport,
 } from './src/utils/collageExport';
-import { clamp, getSlotBoundsMap } from './src/utils/collageMath';
+import { clamp, fitFrame, getSlotBoundsMap } from './src/utils/collageMath';
 import { normalizeQuarterTurn, normalizeTransform, placedMediaRect } from './src/utils/frameTransform';
+import { type HintStep, loadOnboarding, type OnboardingSeen, saveOnboarding } from './src/utils/onboarding';
+import { buildSlotMedia, formatClipDuration } from './src/utils/slotMedia';
 
-const fitFrame = (width: number, height: number, ratio: number) => {
-  if (width <= 0 || height <= 0) return { width: 0, height: 0 };
-  const safeWidth = Math.max(0, width - 1);
-  const safeHeight = Math.max(0, height - 1);
-  const heightFromWidth = safeWidth / ratio;
-  if (heightFromWidth <= safeHeight) return { width: safeWidth, height: heightFromWidth };
-  return { width: safeHeight * ratio, height: safeHeight };
-};
+/** Altura aproximada de la barra, Exportar y márgenes: la burbuja queda justo encima de la barra. */
+const HINT_BOTTOM = 152;
 
 const EMPTY_SLOTS: Record<string, SlotMedia> = {
   'slot-1': { kind: 'empty' },
@@ -58,6 +60,7 @@ const EMPTY_SLOTS: Record<string, SlotMedia> = {
 };
 
 export default function App() {
+  useFonts(Ionicons.font);
   const [layout, setLayout] = useState<LayoutType>('three-horizontal');
   const [borderMode, setBorderMode] = useState<BorderMode>('black');
   const [duration, setDuration] = useState<number>(10);
@@ -69,9 +72,7 @@ export default function App() {
   const [previewRemaining, setPreviewRemaining] = useState(0);
   const [previewSession, setPreviewSession] = useState(0);
   const [editingSlotId, setEditingSlotId] = useState<string | null>(null);
-  const [libraryDialog, setLibraryDialog] = useState<
-    { kind: 'closed' } | { kind: 'confirm'; slotId: string } | { kind: 'denied' }
-  >({ kind: 'closed' });
+  const [permissionDeniedVisible, setPermissionDeniedVisible] = useState(false);
   const [resetDialog, setResetDialog] = useState<
     { kind: 'closed' } | { kind: 'empty' } | { kind: 'confirm' }
   >({ kind: 'closed' });
@@ -82,6 +83,14 @@ export default function App() {
   const [confirmNewCollage, setConfirmNewCollage] = useState(false);
   const [infoModalVisible, setInfoModalVisible] = useState(false);
   const [selectedSlotId, setSelectedSlotId] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+  const [isDraggingSlot, setIsDraggingSlot] = useState(false);
+  const [isEditorGesture, setIsEditorGesture] = useState(false);
+  const [exportSheetOpen, setExportSheetOpen] = useState(false);
+  const [onboarding, setOnboarding] = useState<OnboardingSeen | null>(null);
+  const onboardingRef = useRef<OnboardingSeen | null>(null);
+  const [openPanel, setOpenPanel] = useState<'design' | 'duration' | null>(null);
+  const [canvasBox, setCanvasBox] = useState({ width: 0, height: 0 });
   const [previewBox, setPreviewBox] = useState({ width: 0, height: 0 });
   const [editorBox, setEditorBox] = useState({ width: 0, height: 0 });
   const [draftTransform, setDraftTransform] = useState<PhotoTransform>({
@@ -94,6 +103,7 @@ export default function App() {
   const activeSlots = useMemo(() => LAYOUT_SPECS[layout], [layout]);
   const hasBlackBorders = borderMode === 'black';
   const previewFrame = fitFrame(previewBox.width, previewBox.height, 9 / 16);
+  const canvasFrame = fitFrame(canvasBox.width, canvasBox.height, 9 / 16);
   const editingBounds = editingSlotId ? getSlotBoundsMap(layout, hasBlackBorders)[editingSlotId] : undefined;
   const editorRatio =
     editingBounds && editingBounds.height > 0 ? editingBounds.width / editingBounds.height : 9 / 16;
@@ -111,9 +121,11 @@ export default function App() {
     setSlots({ ...EMPTY_SLOTS });
     setDuration(10);
     setSelectedSlotId(null);
+    setOpenPanel(null);
     setEditingSlotId(null);
     setIsPreviewOpen(false);
-    setLibraryDialog({ kind: 'closed' });
+    setPermissionDeniedVisible(false);
+    setExportSheetOpen(false);
     setResetDialog({ kind: 'closed' });
     setFeedbackDialog({ kind: 'closed' });
     setConfirmNewCollage(false);
@@ -122,9 +134,20 @@ export default function App() {
   const panStartRef = useRef({ x: 0, y: 0 });
   const pinchStartDistanceRef = useRef<number | null>(null);
   const pinchStartScaleRef = useRef(1);
+  const editorTouchStartRef = useRef(0);
+  const editorLastTapRef = useRef(0);
   const draftTransformRef = useRef(draftTransform);
   const exportProgressRef = useRef(0);
   const isExportingRef = useRef(false);
+  const isPickingRef = useRef(false);
+  const noticeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(
+    () => () => {
+      if (noticeTimerRef.current) clearTimeout(noticeTimerRef.current);
+    },
+    []
+  );
   const exportCanvasRef = useRef<View | null>(null);
 
   useEffect(() => {
@@ -162,6 +185,8 @@ export default function App() {
 
         pinchStartDistanceRef.current = getTouchesDistance(event);
         pinchStartScaleRef.current = current.scale;
+        editorTouchStartRef.current = Date.now();
+        setIsEditorGesture(true);
       },
       onPanResponderMove: (event, gestureState) => {
         if (gestureState.numberActiveTouches >= 2) {
@@ -207,13 +232,26 @@ export default function App() {
                 : panStartRef.current.y,
           }));
       },
-      onPanResponderRelease: () => {
+      onPanResponderRelease: (_event, gestureState) => {
         const current = draftTransformRef.current;
         panStartRef.current = { x: current.translateX, y: current.translateY };
         pinchStartDistanceRef.current = null;
+        setIsEditorGesture(false);
+
+        const now = Date.now();
+        const isTap =
+          Math.hypot(gestureState.dx, gestureState.dy) < 8 && now - editorTouchStartRef.current < 250;
+        if (!isTap) return;
+        if (now - editorLastTapRef.current < 300) {
+          editorLastTapRef.current = 0;
+          setDraftTransform((prev) => ({ ...prev, scale: prev.scale > 1.05 ? MIN_PHOTO_SCALE : 2 }));
+          return;
+        }
+        editorLastTapRef.current = now;
       },
       onPanResponderTerminate: () => {
         pinchStartDistanceRef.current = null;
+        setIsEditorGesture(false);
       },
     })
   ).current;
@@ -238,6 +276,42 @@ export default function App() {
 
   const emptySlotCount = activeSlots.length - filledCount;
 
+  const markHintSeen = (step: HintStep) => {
+    const current = onboardingRef.current;
+    if (!current || current[step]) return;
+    const next = { ...current, [step]: true };
+    onboardingRef.current = next;
+    setOnboarding(next);
+    saveOnboarding(next);
+  };
+
+  useEffect(() => {
+    let active = true;
+    loadOnboarding().then((seen) => {
+      if (!active) return;
+      onboardingRef.current = seen;
+      setOnboarding(seen);
+    });
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!onboarding) return;
+    if (!onboarding.add && filledCount > 0) markHintSeen('add');
+    else if (onboarding.add && !onboarding.adjust && selectedSlotId) markHintSeen('adjust');
+    else if (onboarding.adjust && !onboarding.export && exportSheetOpen) markHintSeen('export');
+  }, [onboarding, filledCount, selectedSlotId, exportSheetOpen]);
+
+  const hintBusy = Boolean(openPanel) || Boolean(selectedSlotId) || exportSheetOpen || isExporting || isDraggingSlot;
+  let activeHint: HintStep | null = null;
+  if (onboarding && !hintBusy) {
+    if (!onboarding.add) activeHint = filledCount === 0 ? 'add' : null;
+    else if (!onboarding.adjust) activeHint = filledCount > 0 ? 'adjust' : null;
+    else if (!onboarding.export) activeHint = filledCount > 0 ? 'export' : null;
+  }
+
   useEffect(() => {
     if (!isPreviewOpen) return;
 
@@ -257,7 +331,16 @@ export default function App() {
     };
   }, [isPreviewOpen, duration, previewSession]);
 
-  const pickMediaForSlot = async (slotId: string): Promise<'picked' | 'denied' | 'canceled'> => {
+  const showNotice = (message: string) => {
+    if (noticeTimerRef.current) clearTimeout(noticeTimerRef.current);
+    setNotice(message);
+    noticeTimerRef.current = setTimeout(() => {
+      setNotice(null);
+      noticeTimerRef.current = null;
+    }, 3500);
+  };
+
+  const pickMediaForSlots = async (slotIds: string[]): Promise<'picked' | 'denied' | 'canceled'> => {
     const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
 
     if (!permission.granted) {
@@ -267,102 +350,61 @@ export default function App() {
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ['images', 'videos'],
       quality: 1,
-      selectionLimit: 1,
-      allowsMultipleSelection: false,
+      selectionLimit: slotIds.length,
+      allowsMultipleSelection: slotIds.length > 1,
+      orderedSelection: true,
     });
 
-    if (result.canceled || !result.assets?.[0]) return 'canceled';
+    if (result.canceled || !result.assets?.length) return 'canceled';
 
-    const asset = result.assets[0];
-    const kind: MediaType = asset.type === 'video' ? 'video' : 'photo';
-
-    let previewUri: string | undefined = asset.uri;
-    if (kind === 'video') {
-      try {
-        const thumbnail = await VideoThumbnails.getThumbnailAsync(asset.uri, {
-          time: 700,
-        });
-        previewUri = thumbnail.uri;
-      } catch {
-        previewUri = undefined;
-      }
+    const chosen = result.assets.slice(0, slotIds.length);
+    const built: SlotMedia[] = [];
+    for (const asset of chosen) {
+      built.push(await buildSlotMedia(asset));
     }
 
-    const readImageSize = (imageUri: string) =>
-      new Promise<{ width: number; height: number } | null>((resolve) => {
-        Image.getSize(
-          imageUri,
-          (width, height) => resolve(width > 0 && height > 0 ? { width, height } : null),
-          () => resolve(null)
-        );
+    setSlots((prev) => {
+      const next = { ...prev };
+      built.forEach((media, index) => {
+        const slotId = slotIds[index];
+        next[slotId] = {
+          ...media,
+          muted: media.kind === 'video' ? prev[slotId]?.muted ?? false : undefined,
+        };
       });
-
-    let width: number | undefined;
-    let height: number | undefined;
-    let stillWidth: number | undefined;
-    let stillHeight: number | undefined;
-    let rotation: number | undefined;
-    let hasAudio: boolean | undefined;
-
-    if (kind === 'photo') {
-      const size = await readImageSize(asset.uri);
-      width = size?.width;
-      height = size?.height;
-      stillWidth = width;
-      stillHeight = height;
-    } else {
-      const probed = await probeVideoOrientation(asset.uri);
-      const still = previewUri ? await readImageSize(previewUri) : null;
-      stillWidth = still?.width;
-      stillHeight = still?.height;
-      if (probed) {
-        width = probed.width;
-        height = probed.height;
-        rotation = probed.rotation;
-        hasAudio = probed.hasAudio;
-      } else if (still) {
-        width = still.width;
-        height = still.height;
-        rotation = 0;
-      }
+      return next;
+    });
+    if (built.some((media) => media.kind === 'video' && normalizeQuarterTurn(media.rotation) !== 0)) {
+      showNotice('Vídeo vertical enderezado automáticamente');
     }
-
-    setSlots((prev) => ({
-      ...prev,
-      [slotId]: {
-        kind,
-        uri: asset.uri,
-        previewUri,
-        width,
-        height,
-        stillWidth,
-        stillHeight,
-        rotation: kind === 'video' ? rotation : undefined,
-        hasAudio: kind === 'video' ? hasAudio : undefined,
-        transform: { scale: 1, translateX: 0, translateY: 0 },
-        muted: kind === 'video' ? prev[slotId]?.muted ?? false : undefined,
-      },
-    }));
     return 'picked';
   };
 
-  const onPressLoadSlot = (slotId: string) => {
-    setLibraryDialog({ kind: 'confirm', slotId });
-  };
-
-  const onConfirmLibraryAccess = () => {
-    if (libraryDialog.kind !== 'confirm') return;
-    const { slotId } = libraryDialog;
-    setLibraryDialog({ kind: 'closed' });
-    pickMediaForSlot(slotId)
+  const loadIntoSlots = (slotIds: string[]) => {
+    if (slotIds.length === 0 || isPickingRef.current) return;
+    isPickingRef.current = true;
+    pickMediaForSlots(slotIds)
       .then((outcome) => {
         if (outcome === 'denied') {
-          setLibraryDialog({ kind: 'denied' });
+          setPermissionDeniedVisible(true);
         }
       })
       .catch(() => {
         Alert.alert('Error', 'No se pudo abrir la librería. Intenta nuevamente.');
+      })
+      .finally(() => {
+        isPickingRef.current = false;
       });
+  };
+
+  const onPressLoadSlot = (slotId: string) => {
+    loadIntoSlots([slotId]);
+  };
+
+  const onPressAdd = () => {
+    setOpenPanel(null);
+    setSelectedSlotId(null);
+    loadIntoSlots(activeSlots.filter((slot) => slots[slot.id]?.kind === 'empty' || !slots[slot.id]).map((slot) => slot.id));
   };
 
   const onClearSlot = (slotId: string) => {
@@ -380,6 +422,8 @@ export default function App() {
     }
 
     setPreviewSession((prev) => prev + 1);
+    setOpenPanel(null);
+    setSelectedSlotId(null);
     setIsPreviewOpen(true);
   };
 
@@ -403,17 +447,26 @@ export default function App() {
     setEditingSlotId(null);
   };
 
-  const onZoomStep = (delta: number) => {
-    setDraftTransform((prev) => ({
-      ...prev,
-      scale: clamp(prev.scale + delta, MIN_PHOTO_SCALE, MAX_PHOTO_SCALE),
-    }));
-  };
-
   const updateExportProgress = (nextValue: number) => {
     const clamped = clamp(nextValue, 0, 1);
     if (Math.abs(clamped - exportProgressRef.current) < 0.01 && clamped !== 1) return;
     setExportProgress(clamped);
+  };
+
+  const onOpenExportSheet = () => {
+    if (isExportingRef.current) return;
+    if (filledCount === 0) {
+      Alert.alert('Exportación no disponible', 'Carga al menos una foto o video para exportar.');
+      return;
+    }
+    setOpenPanel(null);
+    setSelectedSlotId(null);
+    setExportSheetOpen(true);
+  };
+
+  const onCancelExport = () => {
+    setExportStatus('Cancelando...');
+    requestCancelExport();
   };
 
   const onExportCollage = async () => {
@@ -425,6 +478,8 @@ export default function App() {
 
     isExportingRef.current = true;
     try {
+      setOpenPanel(null);
+      setSelectedSlotId(null);
       setIsExporting(true);
       setExportStatus('Preparando exportación...');
       updateExportProgress(0.03);
@@ -473,19 +528,21 @@ export default function App() {
             : 'Tu historia se guardó en el álbum Historys de la galería.',
           ...(codecLine ? ['', codecLine] : []),
         ];
+        setExportSheetOpen(false);
         setFeedbackDialog({
           kind: 'ready',
           title: 'Listo',
           body: videoLines.join('\n'),
         });
       } catch (error) {
+        if (error instanceof ExportCancelledError) return;
         console.error('Video export failed', error);
 
         // Si hay videos en los slots, el fallback de imagen no sirve (saldría negro).
         if (containsVideo) {
           Alert.alert(
             'No pudimos exportar tu historia',
-            'Ocurrió un inconveniente al procesar uno de los vídeos. Prueba con una calidad más baja o vuelve a cargar el clip.'
+            'Ocurrió un inconveniente al procesar uno de los vídeos. Prueba con la calidad Ligera o vuelve a cargar el clip.'
           );
           return;
         }
@@ -500,6 +557,7 @@ export default function App() {
         const imageLines = [
           emptySlotCount > 0 ? `${fallbackBase} Los huecos vacíos quedaron en negro.` : fallbackBase,
         ];
+        setExportSheetOpen(false);
         setFeedbackDialog({
           kind: 'ready',
           title: 'Listo',
@@ -519,6 +577,139 @@ export default function App() {
     }
   };
 
+  const selectedSlot = activeSlots.find((slot) => slot.id === selectedSlotId);
+  const selectedMedia: SlotMedia | undefined = selectedSlot ? slots[selectedSlot.id] ?? { kind: 'empty' } : undefined;
+
+  const togglePanel = (panel: 'design' | 'duration') => {
+    setSelectedSlotId(null);
+    setOpenPanel((current) => (current === panel ? null : panel));
+  };
+
+  const onToggleSlotMute = (slotId: string) => {
+    setSlots((prev) => ({
+      ...prev,
+      [slotId]: { ...prev[slotId], muted: !prev[slotId]?.muted },
+    }));
+  };
+
+  let captionText = filledCount === 0
+    ? 'Toca un hueco para cargar una foto o un vídeo.'
+    : 'Toca un hueco para cambiarlo o ajustarlo.';
+  if (selectedSlot && selectedMedia) {
+    const kindLabel = selectedMedia.kind === 'photo' ? 'Foto' : selectedMedia.kind === 'video' ? 'Vídeo' : 'Vacío';
+    const soundLabel =
+      selectedMedia.kind !== 'video'
+        ? ''
+        : selectedMedia.hasAudio === false
+          ? ' · Sin sonido'
+          : selectedMedia.muted
+            ? ' · Silenciado'
+            : ' · Con sonido';
+    captionText = `Hueco ${selectedSlot.id.replace('slot-', '')} · ${kindLabel}${soundLabel}`;
+  }
+  if (notice) captionText = notice;
+  if (isDraggingSlot) captionText = 'Suelta sobre otro hueco para intercambiarlos';
+
+  const globalDockItems: DockItem[] = [
+    {
+      key: 'design',
+      label: 'Diseño',
+      icon: 'grid-outline',
+      value: LAYOUT_CHOICES.find((choice) => choice.id === layout)?.label,
+      onPress: () => togglePanel('design'),
+    },
+    {
+      key: 'duration',
+      label: 'Duración',
+      icon: 'time-outline',
+      value: `${duration} s`,
+      onPress: () => togglePanel('duration'),
+    },
+    {
+      key: 'add',
+      label: 'Añadir',
+      icon: 'add-circle-outline',
+      value: emptySlotCount > 0 ? `${emptySlotCount} ${emptySlotCount === 1 ? 'libre' : 'libres'}` : 'Completo',
+      disabled: emptySlotCount === 0,
+      onPress: onPressAdd,
+    },
+    { key: 'preview', label: 'Vista previa', icon: 'play-circle-outline', onPress: onOpenPreview },
+  ];
+
+  const slotDockItems: DockItem[] = selectedSlot && selectedMedia
+    ? [
+        {
+          key: 'load',
+          label: 'Cambiar',
+          icon: 'images-outline',
+          onPress: () => onPressLoadSlot(selectedSlot.id),
+        },
+        {
+          key: 'adjust',
+          label: 'Ajustar',
+          icon: 'crop-outline',
+          onPress: () => onOpenPhotoEditor(selectedSlot.id),
+        },
+        ...(selectedMedia.kind === 'video'
+          ? [
+              {
+                key: 'sound',
+                label: 'Sonido',
+                icon: (selectedMedia.muted ? 'volume-mute-outline' : 'volume-high-outline') as IconName,
+                active: Boolean(selectedMedia.muted),
+                onPress: () => onToggleSlotMute(selectedSlot.id),
+              },
+            ]
+          : []),
+        {
+          key: 'clear',
+          label: 'Quitar',
+          icon: 'trash-outline',
+          onPress: () => onClearSlot(selectedSlot.id),
+        },
+        {
+          key: 'done',
+          label: 'Listo',
+          icon: 'checkmark',
+          emphasis: true,
+          onPress: () => setSelectedSlotId(null),
+        },
+      ]
+    : [];
+
+  const dockItems = selectedSlot ? slotDockItems : globalDockItems;
+
+  const onSlotPress = (slotId: string) => {
+    setOpenPanel(null);
+    if ((slots[slotId]?.kind ?? 'empty') === 'empty') {
+      setSelectedSlotId(null);
+      onPressLoadSlot(slotId);
+      return;
+    }
+    setSelectedSlotId((current) => (current === slotId ? null : slotId));
+  };
+
+  const onSlotDoubleTap = (slotId: string) => {
+    setOpenPanel(null);
+    setSelectedSlotId(slotId);
+    onOpenPhotoEditor(slotId);
+  };
+
+  const onSwapSlots = (fromId: string, toId: string) => {
+    setSlots((prev) => ({
+      ...prev,
+      [fromId]: prev[toId] ?? { kind: 'empty' },
+      [toId]: prev[fromId] ?? { kind: 'empty' },
+    }));
+    setSelectedSlotId(null);
+    setOpenPanel(null);
+  };
+
+  const onTapOutsideSlots = () => {
+    setSelectedSlotId(null);
+    setOpenPanel(null);
+  };
+
   const renderSlot = (slot: SlotSpec) => {
     const slotMedia = slots[slot.id] ?? { kind: 'empty' };
     const media = slotMedia.kind;
@@ -535,9 +726,7 @@ export default function App() {
         accessibilityLabel={
           media === 'empty' ? `${holeLabel}, vacío` : media === 'photo' ? `${holeLabel}, foto` : `${holeLabel}, vídeo`
         }
-        onPress={() => {
-          setSelectedSlotId((current) => (current === slot.id ? null : slot.id));
-        }}
+        onPress={() => onSlotPress(slot.id)}
         style={[styles.slot, slot.style === 'horizontal' ? styles.horizontalSlot : styles.verticalSlot]}
       >
         {media === 'photo' && slotMedia.uri && (
@@ -565,20 +754,25 @@ export default function App() {
 
         {media === 'video' && (
           <View style={styles.videoBadge}>
-            <Text style={styles.videoBadgeText}>VIDEO</Text>
-          </View>
-        )}
-
-        {media === 'video' && normalizeQuarterTurn(slotMedia.rotation) !== 0 && (
-          <View style={styles.correctedChip}>
-            <Text style={styles.correctedChipText}>Corregido</Text>
+            {(slotMedia.muted || slotMedia.hasAudio === false) && (
+              <Ionicons name="volume-mute" size={12} color="#f5f3ef" />
+            )}
+            <Ionicons name="play" size={10} color="#f5f3ef" />
+            {slotMedia.durationMs ? (
+              <Text style={styles.videoBadgeText}>{formatClipDuration(slotMedia.durationMs)}</Text>
+            ) : null}
           </View>
         )}
 
         {media === 'empty' && (
-          <Text style={styles.slotEmptyLabel} numberOfLines={2}>
-            Toca para cargar
-          </Text>
+          <View style={styles.slotEmpty}>
+            <View style={styles.slotEmptyPlus}>
+              <Text style={styles.slotEmptyPlusText}>+</Text>
+            </View>
+            <Text style={styles.slotEmptyLabel} numberOfLines={1}>
+              Añadir
+            </Text>
+          </View>
         )}
 
         {isSelected && <View pointerEvents="none" style={styles.slotSelectedRing} />}
@@ -664,230 +858,142 @@ export default function App() {
     <SafeAreaProvider initialMetrics={initialWindowMetrics}>
     <SafeAreaView style={styles.safeArea}>
       <StatusBar style="dark" />
-      <ScrollView contentContainerStyle={styles.container}>
-        <View style={styles.titleRow}>
-          <Image source={require('./assets/icon.png')} style={styles.titleIcon} />
-          <View style={styles.titleTextFlex}>
-            <Text style={styles.title}>Historys</Text>
-          </View>
-          <View style={styles.titleToolbar}>
-            <Pressable
-              style={styles.titleToolButton}
-              onPress={() => setInfoModalVisible(true)}
-              hitSlop={8}
-              accessibilityRole="button"
-              accessibilityLabel="Información"
-            >
-              <Text style={styles.titleToolButtonInfo}>i</Text>
-            </Pressable>
-            <Pressable
-              style={[styles.titleToolButton, styles.titleToolButtonFilled]}
-              onPress={onRequestResetCollage}
-              hitSlop={8}
-              accessibilityRole="button"
-              accessibilityLabel="Resetear collage"
-            >
-              <Text style={styles.titleToolButtonReset}>R</Text>
-            </Pressable>
-          </View>
-        </View>
+      <View style={styles.screen}>
+        <TopBar onHelp={() => setInfoModalVisible(true)} onNewCollage={onRequestResetCollage} />
 
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Estilo del collage</Text>
-          <View style={styles.layoutRow}>
-            {LAYOUT_CHOICES.map((choice) => {
-              const selected = layout === choice.id;
-              return (
-                <Pressable
-                  key={choice.id}
-                  disabled={isExporting}
-                  accessibilityRole="button"
-                  accessibilityLabel={choice.label}
-                  accessibilityState={{ selected }}
-                  style={[styles.layoutChoice, selected && styles.layoutChoiceSelected]}
-                  onPress={() => setLayout(choice.id)}
-                >
-                  <LayoutThumb layout={choice.id} hasBlackBorders={hasBlackBorders} selected={selected} />
-                  <Text style={[styles.layoutChoiceLabel, selected && styles.chipTextSelected]}>
-                    {choice.label}
-                  </Text>
-                </Pressable>
-              );
-            })}
-          </View>
-        </View>
-
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Bordes del collage</Text>
-          <View style={styles.chipRow}>
-            {(Object.keys(BORDER_LABELS) as BorderMode[]).map((mode) => (
-              <Pressable
-                key={mode}
-                style={[styles.chip, borderMode === mode && styles.chipSelected]}
-                onPress={() => setBorderMode(mode)}
-              >
-                <Text style={[styles.chipText, borderMode === mode && styles.chipTextSelected]}>
-                  {BORDER_LABELS[mode]}
-                </Text>
-              </Pressable>
-            ))}
-          </View>
-        </View>
-
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Slots multimedia</Text>
-          <View style={styles.previewFrame}>
+        <Pressable
+          style={styles.canvasZone}
+          accessible={false}
+          onPress={() => {
+            setSelectedSlotId(null);
+            setOpenPanel(null);
+          }}
+          onLayout={(event) => {
+            const { width, height } = event.nativeEvent.layout;
+            setCanvasBox((prev) =>
+              prev.width === width && prev.height === height ? prev : { width, height }
+            );
+          }}
+        >
+          <View style={[styles.canvasFrame, canvasFrame]}>
             <CollageLayout
               layout={layout}
               hasBlackBorders={hasBlackBorders}
               slots={activeSlots}
               renderSlot={renderSlot}
             />
+            <SlotGestureLayer
+              layout={layout}
+              hasBlackBorders={hasBlackBorders}
+              slots={activeSlots}
+              width={canvasFrame.width}
+              height={canvasFrame.height}
+              disabled={isExporting}
+              canDrag={(slotId) => (slots[slotId]?.kind ?? 'empty') !== 'empty'}
+              canAdjust={(slotId) => (slots[slotId]?.kind ?? 'empty') !== 'empty'}
+              renderGhost={(slotId) => {
+                const ghostSlot = activeSlots.find((slot) => slot.id === slotId);
+                return ghostSlot ? renderExportSlot(ghostSlot) : null;
+              }}
+              onTapSlot={onSlotPress}
+              onDoubleTapSlot={onSlotDoubleTap}
+              onTapOutside={onTapOutsideSlots}
+              onSwap={onSwapSlots}
+              onDragChange={setIsDraggingSlot}
+            />
           </View>
-          {(() => {
-            const selected = activeSlots.find((slot) => slot.id === selectedSlotId);
-            if (!selected) {
-              return <Text style={styles.slotBarHint}>Toca un hueco para cargarlo o ajustarlo.</Text>;
-            }
-            const media = slots[selected.id] ?? { kind: 'empty' };
-            const kindLabel = media.kind === 'photo' ? 'Foto' : media.kind === 'video' ? 'Vídeo' : 'Vacío';
-            const soundLabel = media.kind !== 'video' ? '' : media.muted ? ' · Silencio' : ' · Audio';
-            return (
-              <View style={styles.slotBar}>
-                <Text style={styles.slotBarTitle}>
-                  Hueco {selected.id.replace('slot-', '')} · {kindLabel}
-                  {soundLabel}
-                </Text>
-                <View style={styles.slotBarGrid}>
-                  <Pressable
-                    style={[styles.slotButton, styles.slotBarButton]}
-                    disabled={isExporting}
-                    onPress={() => onPressLoadSlot(selected.id)}
-                  >
-                    <Text style={styles.slotButtonText}>Cargar</Text>
-                  </Pressable>
-                  {media.kind !== 'empty' && (
-                    <Pressable
-                      style={[styles.slotButtonGhost, styles.slotBarButton]}
-                      disabled={isExporting}
-                      onPress={() => onOpenPhotoEditor(selected.id)}
-                    >
-                      <Text style={styles.slotButtonGhostText}>Ajustar</Text>
-                    </Pressable>
-                  )}
-                  {media.kind === 'video' && (
-                    <Pressable
-                      style={[
-                        styles.slotButtonGhost,
-                        styles.slotBarButton,
-                        media.muted && styles.slotButtonGhostMuted,
-                      ]}
-                      disabled={isExporting}
-                      accessibilityLabel={media.muted ? 'Silencio' : 'Audio'}
-                      onPress={() =>
-                        setSlots((prev) => ({
-                          ...prev,
-                          [selected.id]: { ...prev[selected.id], muted: !prev[selected.id]?.muted },
-                        }))
-                      }
-                    >
-                      <Text style={styles.slotButtonGhostText}>{media.muted ? 'Silencio' : 'Audio'}</Text>
-                    </Pressable>
-                  )}
-                  {media.kind !== 'empty' && (
-                    <Pressable
-                      style={[styles.slotButtonGhost, styles.slotBarButton]}
-                      disabled={isExporting}
-                      onPress={() => onClearSlot(selected.id)}
-                    >
-                      <Text style={styles.slotButtonGhostText}>Quitar</Text>
-                    </Pressable>
-                  )}
-                </View>
-              </View>
-            );
-          })()}
-          {audibleCount >= 2 && <Text style={styles.mixHint}>Se mezclarán en una pista</Text>}
-        </View>
+        </Pressable>
 
-        <View style={styles.section}>
-          <View style={styles.durationRow}>
-            {DURATION_OPTIONS.map((seconds) => (
-              <Pressable
-                key={seconds}
-                style={[styles.durationChip, duration === seconds && styles.chipSelected]}
-                onPress={() => setDuration(seconds)}
-              >
-                <Text
-                  style={[styles.durationChipText, duration === seconds && styles.chipTextSelected]}
-                >
-                  {seconds}s
-                </Text>
-              </Pressable>
-            ))}
-          </View>
-        </View>
+        {!openPanel && <Text style={styles.caption}>{captionText}</Text>}
 
-        <View style={styles.section}>
-          <View style={styles.durationRow}>
-            {QUALITY_OPTIONS.map((option) => (
-              <Pressable
-                key={option.id}
-                disabled={isExporting}
-                style={[styles.durationChip, quality === option.id && styles.chipSelected]}
-                onPress={() => setQuality(option.id)}
-              >
-                <Text
-                  style={[styles.durationChipText, quality === option.id && styles.chipTextSelected]}
-                >
-                  {option.label}
-                </Text>
-              </Pressable>
-            ))}
-          </View>
-        </View>
-
-        <View style={styles.actionsRow}>
-          <Pressable
-            style={[styles.curveButtonOuter, isExporting && styles.curveButtonOuterDisabled]}
-            onPress={onOpenPreview}
-            disabled={isExporting}
-          >
-            <View style={styles.curveButtonInner}>
-              <Text style={styles.curveButtonText}>Preview</Text>
-            </View>
-          </Pressable>
-
-          <Pressable
-            style={[styles.curveButtonOuterPrimary, isExporting && styles.curveButtonOuterDisabled]}
-            onPress={onExportCollage}
-            disabled={isExporting}
-          >
-            <View style={styles.curveButtonInnerPrimary}>
-              <Text style={styles.curveButtonTextPrimary}>
-                {isExporting ? 'Exportando...' : 'Exportar'}
-              </Text>
-            </View>
-          </Pressable>
-        </View>
-
-        {isExporting && (
-          <View style={styles.exportProgressCard}>
-            <View style={styles.exportProgressHeader}>
-              <Text style={styles.exportProgressLabel}>{exportStatus || 'Exportando...'}</Text>
-              <Text style={styles.exportProgressPercent}>{Math.round(exportProgress * 100)}%</Text>
-            </View>
-            <View style={styles.exportProgressTrack}>
-              <View
-                style={[
-                  styles.exportProgressFill,
-                  { width: `${Math.max(4, Math.round(exportProgress * 100))}%` },
-                ]}
-              />
-            </View>
-          </View>
+        {openPanel === 'design' ? (
+          <DesignPanel
+            layout={layout}
+            borderMode={borderMode}
+            onLayoutChange={setLayout}
+            onBorderModeChange={setBorderMode}
+            onClose={() => setOpenPanel(null)}
+          />
+        ) : openPanel === 'duration' ? (
+          <DurationPanel
+            duration={duration}
+            durationOptions={DURATION_OPTIONS}
+            onDurationChange={setDuration}
+            onClose={() => setOpenPanel(null)}
+          />
+        ) : (
+          <ToolDock items={dockItems} />
         )}
-      </ScrollView>
+
+        <Pressable
+          style={[styles.exportButton, isExporting && styles.exportButtonDisabled]}
+          accessibilityRole="button"
+          onPress={onOpenExportSheet}
+          disabled={isExporting}
+        >
+          <Text style={styles.exportButtonText}>{isExporting ? 'Exportando...' : 'Exportar'}</Text>
+        </Pressable>
+
+        {activeHint === 'add' && (
+          <Coachmark
+            title="Empieza aquí"
+            body="Elige hasta 3 fotos o vídeos con Añadir, o toca un hueco."
+            step="1 de 3"
+            bottom={HINT_BOTTOM}
+            arrowLeft="60%"
+            onDismiss={() => markHintSeen('add')}
+          />
+        )}
+        {activeHint === 'adjust' && (
+          <Coachmark
+            title="Toca un hueco"
+            body="Ajusta el encuadre, cambia el clip o silencia el sonido. Mantén pulsado y arrastra para cambiar de sitio."
+            step="2 de 3"
+            bottom={HINT_BOTTOM}
+            onDismiss={() => markHintSeen('adjust')}
+          />
+        )}
+        {activeHint === 'export' && (
+          <Coachmark
+            title="Cuando termines"
+            body="Pulsa Exportar para guardar tu historia en la galería."
+            step="3 de 3"
+            bottom={HINT_BOTTOM}
+            onDismiss={() => markHintSeen('export')}
+          />
+        )}
+      </View>
+
+      <ExportSheet
+        visible={exportSheetOpen}
+        isExporting={isExporting}
+        progress={exportProgress}
+        status={exportStatus}
+        thumbnail={
+          <CollageLayout
+            layout={layout}
+            hasBlackBorders={hasBlackBorders}
+            slots={activeSlots}
+            renderSlot={renderExportSlot}
+          />
+        }
+        summaryLines={[
+          `${filledCount} de ${activeSlots.length} huecos · ${duration} s`,
+          audibleCount >= 2
+            ? `Sonido: ${audibleCount} vídeos mezclados`
+            : audibleCount === 1
+              ? 'Sonido: 1 vídeo'
+              : 'Sin sonido',
+          '1080 × 1920 · MP4',
+          emptySlotCount > 0 ? 'Álbum Historys · huecos vacíos en negro' : 'Álbum Historys',
+        ]}
+        durationSeconds={duration}
+        quality={quality}
+        onQualityChange={setQuality}
+        onSave={onExportCollage}
+        onCancelExport={onCancelExport}
+        onClose={() => setExportSheetOpen(false)}
+      />
 
       <View style={styles.exportHiddenWrapper} pointerEvents="none">
         <View
@@ -905,58 +1011,43 @@ export default function App() {
       </View>
 
       <Modal
-        visible={libraryDialog.kind !== 'closed'}
+        visible={permissionDeniedVisible}
         animationType="fade"
         transparent
-        onRequestClose={() => setLibraryDialog({ kind: 'closed' })}
+        onRequestClose={() => setPermissionDeniedVisible(false)}
       >
         <View style={styles.libraryModalOuter}>
           <Pressable
             style={styles.libraryModalDim}
             accessibilityRole="button"
             accessibilityLabel="Cerrar"
-            onPress={() => setLibraryDialog({ kind: 'closed' })}
+            onPress={() => setPermissionDeniedVisible(false)}
           />
           <View style={styles.libraryModalCard}>
-            {libraryDialog.kind === 'confirm' && (
-              <>
-                <Text style={styles.libraryModalTitle}>Acceder a librería</Text>
-                <Text style={styles.libraryModalMessage}>
-                  ¿Quieres permitir acceso a la librería para cargar foto o video?
-                </Text>
-                <View style={styles.libraryModalActions}>
-                  <Pressable
-                    style={[styles.slotButtonGhost, { flex: 1, alignItems: 'center' }]}
-                    onPress={() => setLibraryDialog({ kind: 'closed' })}
-                  >
-                    <Text style={styles.slotButtonGhostText}>Cancelar</Text>
-                  </Pressable>
-                  <Pressable
-                    style={[styles.slotButton, { flex: 1, alignItems: 'center' }]}
-                    onPress={onConfirmLibraryAccess}
-                  >
-                    <Text style={styles.slotButtonText}>Continuar</Text>
-                  </Pressable>
-                </View>
-              </>
-            )}
-            {libraryDialog.kind === 'denied' && (
-              <>
-                <Text style={styles.libraryModalTitle}>Permiso necesario</Text>
-                <Text style={styles.libraryModalMessage}>
-                  Necesitamos acceso a tu librería para cargar fotos y videos. Puedes activarlo en
-                  los ajustes del sistema.
-                </Text>
-                <View style={styles.libraryModalActions}>
-                  <Pressable
-                    style={[styles.slotButton, { flex: 1, alignItems: 'center' }]}
-                    onPress={() => setLibraryDialog({ kind: 'closed' })}
-                  >
-                    <Text style={styles.slotButtonText}>Entendido</Text>
-                  </Pressable>
-                </View>
-              </>
-            )}
+            <Text style={styles.libraryModalTitle}>Permiso necesario</Text>
+            <Text style={styles.libraryModalMessage}>
+              Necesitamos acceso a tu librería para cargar fotos y videos. Puedes activarlo en
+              los ajustes del sistema.
+            </Text>
+            <View style={styles.libraryModalActions}>
+              <Pressable
+                style={[styles.slotButtonGhost, { flex: 1, alignItems: 'center' }]}
+                onPress={() => setPermissionDeniedVisible(false)}
+              >
+                <Text style={styles.slotButtonGhostText}>Ahora no</Text>
+              </Pressable>
+              <Pressable
+                style={[styles.slotButton, { flex: 1, alignItems: 'center' }]}
+                onPress={() => {
+                  setPermissionDeniedVisible(false);
+                  Linking.openSettings().catch(() => {
+                    Alert.alert('Ajustes', 'Abre los ajustes del teléfono y da acceso a fotos a Historys.');
+                  });
+                }}
+              >
+                <Text style={styles.slotButtonText}>Abrir ajustes</Text>
+              </Pressable>
+            </View>
           </View>
         </View>
       </Modal>
@@ -1082,19 +1173,21 @@ export default function App() {
                       }
                     }}
                   >
-                    <Text style={styles.slotButtonText}>Ver galería</Text>
-                  </Pressable>
-                  <Pressable
-                    style={[styles.slotButtonGhost, { alignItems: 'center' }]}
-                    onPress={() => setConfirmNewCollage(true)}
-                  >
-                    <Text style={styles.slotButtonGhostText}>Nuevo collage</Text>
+                    <Text style={styles.slotButtonText}>Ver en galería</Text>
                   </Pressable>
                   <Pressable
                     style={[styles.slotButtonGhost, { alignItems: 'center' }]}
                     onPress={() => setFeedbackDialog({ kind: 'closed' })}
                   >
                     <Text style={styles.slotButtonGhostText}>Seguir editando</Text>
+                  </Pressable>
+                  <Pressable
+                    style={styles.successLink}
+                    hitSlop={8}
+                    accessibilityRole="button"
+                    onPress={() => setConfirmNewCollage(true)}
+                  >
+                    <Text style={styles.successLinkText}>Empezar otra historia</Text>
                   </Pressable>
                 </View>
               )}
@@ -1138,11 +1231,11 @@ export default function App() {
                 <View style={styles.infoStepBody}>
                   <Text style={styles.infoStepTitle}>Elige el diseño y los bordes</Text>
                   <Text style={styles.infoStepText}>
-                    Cambia entre <Text style={styles.infoInlineStrong}>3 bandas</Text>,{' '}
+                    Toca <Text style={styles.infoInlineStrong}>Diseño</Text> en la barra de abajo y cambia entre{' '}
+                    <Text style={styles.infoInlineStrong}>3 bandas</Text>,{' '}
                     <Text style={styles.infoInlineStrong}>2+1</Text> o{' '}
-                    <Text style={styles.infoInlineStrong}>1+2</Text> sin perder lo que ya habías cargado. Usa{' '}
-                    <Text style={styles.infoInlineStrong}>Con bordes</Text> o{' '}
-                    <Text style={styles.infoInlineStrong}>Sin bordes</Text> para ajustar el margen negro.
+                    <Text style={styles.infoInlineStrong}>1+2</Text> sin perder lo que ya habías cargado. El interruptor{' '}
+                    <Text style={styles.infoInlineStrong}>Bordes</Text> quita o pone el margen negro.
                   </Text>
                 </View>
               </View>
@@ -1154,17 +1247,25 @@ export default function App() {
                 <View style={styles.infoStepBody}>
                   <Text style={styles.infoStepTitle}>Toca un hueco para editarlo</Text>
                   <Text style={styles.infoStepText}>
-                    Al tocar un hueco aparecen debajo sus controles:
+                    Toca <Text style={styles.infoInlineStrong}>Añadir</Text> en la barra para elegir varias fotos o
+                    vídeos de una vez (se reparten por los huecos libres, en el orden en que los marques), o toca un
+                    hueco vacío (<Text style={styles.infoInlineStrong}>+</Text>) para llenar solo ese. Si ya tiene contenido, la barra de abajo muestra sus controles:
                   </Text>
                   <View style={styles.infoTagList}>
                     <Text style={styles.infoTagItem}>
-                      <Text style={styles.infoInlineStrong}>• Cargar:</Text> elige una foto o un vídeo de tu galería.
+                      <Text style={styles.infoInlineStrong}>• Cambiar:</Text> sustituye el contenido por otra foto o vídeo.
                     </Text>
                     <Text style={styles.infoTagItem}>
                       <Text style={styles.infoInlineStrong}>• Ajustar:</Text> mueve y haz zoom sobre la proporción exacta de ese hueco.
                     </Text>
                     <Text style={styles.infoTagItem}>
-                      <Text style={styles.infoInlineStrong}>• Audio / Silencio:</Text> activa o calla cada vídeo. Si hay dos o más con sonido, se mezclan en una sola pista.
+                      <Text style={styles.infoInlineStrong}>• Sonido:</Text> activa o silencia cada vídeo (el altavoz se tacha cuando está silenciado). Si hay dos o más con sonido, se mezclan en una sola pista.
+                    </Text>
+                    <Text style={styles.infoTagItem}>
+                      <Text style={styles.infoInlineStrong}>• Doble toque:</Text> abre Ajustar directamente.
+                    </Text>
+                    <Text style={styles.infoTagItem}>
+                      <Text style={styles.infoInlineStrong}>• Mantener y arrastrar:</Text> suelta un hueco sobre otro para intercambiarlos; el encuadre y el sonido viajan con él.
                     </Text>
                     <Text style={styles.infoTagItem}>
                       <Text style={styles.infoInlineStrong}>• Quitar:</Text> deja ese hueco en negro (no hace falta llenar los tres).
@@ -1180,8 +1281,11 @@ export default function App() {
                 <View style={styles.infoStepBody}>
                   <Text style={styles.infoStepTitle}>Previsualiza y exporta en Full HD</Text>
                   <Text style={styles.infoStepText}>
-                    Elige la duración (<Text style={styles.infoInlineStrong}>5s a 30s</Text>) y el peso del archivo (
-                    <Text style={styles.infoInlineStrong}>Baja, Media o Alta</Text>). El vídeo se guarda en{' '}
+                    Toca <Text style={styles.infoInlineStrong}>Duración</Text> en la barra para elegir los segundos (
+                    <Text style={styles.infoInlineStrong}>5s a 30s</Text>). Al pulsar{' '}
+                    <Text style={styles.infoInlineStrong}>Exportar</Text> eliges la calidad (
+                    <Text style={styles.infoInlineStrong}>Ligera, Normal o Máxima</Text>, con el peso aproximado) y
+                    guardas. Puedes cancelar mientras se genera. El vídeo se guarda en{' '}
                     <Text style={styles.infoInlineStrong}>1080×1920 (H.264)</Text> dentro del álbum{' '}
                     <Text style={styles.infoInlineStrong}>Historys</Text> y tu collage sigue en pantalla por si quieres hacer otro cambio.
                   </Text>
@@ -1189,21 +1293,22 @@ export default function App() {
               </View>
 
               <View style={styles.infoQuickCard}>
-                <Text style={styles.infoQuickTitle}>Atajos y etiquetas</Text>
+                <Text style={styles.infoQuickTitle}>Menú y etiquetas</Text>
                 <View style={styles.infoQuickRow}>
                   <View style={styles.infoKeyPill}>
-                    <Text style={styles.infoKeyPillText}>R</Text>
+                    <Text style={styles.infoKeyPillText}>···</Text>
                   </View>
                   <Text style={styles.infoQuickText}>
-                    Vacía los 3 huecos y vuelve a 10s (pide confirmación).
+                    Nuevo collage… vacía los 3 huecos y vuelve a 10s (pide confirmación).
                   </Text>
                 </View>
                 <View style={styles.infoQuickRow}>
                   <View style={[styles.infoKeyPill, styles.infoKeyPillSoft]}>
-                    <Text style={styles.infoKeyPillTextDark}>Corregido</Text>
+                    <Text style={styles.infoKeyPillTextDark}>▶ 0:12</Text>
                   </View>
                   <Text style={styles.infoQuickText}>
-                    Indica que un vídeo vertical de cámara se enderezó automáticamente.
+                    Marca los vídeos con su duración. Un altavoz tachado indica que no sonará. Si un vídeo vertical de
+                    cámara se endereza solo, lo avisamos al cargarlo.
                   </Text>
                 </View>
               </View>
@@ -1274,10 +1379,24 @@ export default function App() {
         <SafeAreaProvider initialMetrics={initialWindowMetrics}>
         <SafeAreaView style={styles.editorSafeArea}>
           <StatusBar style="light" />
-          <Text style={styles.editorTitle}>
-            {editingMedia?.kind === 'video' ? 'Ajustar vídeo' : 'Ajustar foto'}
-          </Text>
-          <Text style={styles.editorSubtitle}>Arrastra para mover. Pinza o +/- para zoom.</Text>
+          <View style={styles.editorHeader}>
+            <Pressable
+              style={styles.editorHeaderSide}
+              onPress={() => setEditingSlotId(null)}
+              hitSlop={8}
+              accessibilityRole="button"
+            >
+              <Text style={styles.editorCancelText}>Cancelar</Text>
+            </Pressable>
+            <Text style={styles.editorTitle}>
+              {editingMedia?.kind === 'video' ? 'Ajustar vídeo' : 'Ajustar foto'}
+            </Text>
+            <View style={[styles.editorHeaderSide, styles.editorHeaderSideEnd]}>
+              <Pressable style={styles.editorDoneButton} onPress={onSavePhotoEditor} accessibilityRole="button">
+                <Text style={styles.editorPrimaryButtonText}>Hecho</Text>
+              </Pressable>
+            </View>
+          </View>
 
           <View
             style={styles.editorCanvasSlot}
@@ -1287,62 +1406,105 @@ export default function App() {
                 prev.width === width && prev.height === height ? prev : { width, height }
               );
             }}
-          >
-          <View
-            style={[styles.editorCanvas, editorFrame]}
             {...photoEditorResponder.panHandlers}
           >
-            {editingSlotId && editingMedia?.uri && editingMedia.kind === 'photo' && (
-              <FramedMedia
-                uri={editingMedia.uri}
-                kind="photo"
-                displayWidth={editingMedia.width}
-                displayHeight={editingMedia.height}
-                transform={draftTransform}
-                slotWidth={editorFrame.width}
-                slotHeight={editorFrame.height}
-              />
-            )}
-            {editingSlotId && editingMedia?.uri && editingMedia.kind === 'video' && (
-              <FramedMedia
-                uri={editingMedia.uri}
-                kind="video"
-                displayWidth={editingMedia.width}
-                displayHeight={editingMedia.height}
-                transform={draftTransform}
-                playVideo
-                muted
-                slotWidth={editorFrame.width}
-                slotHeight={editorFrame.height}
-              />
-            )}
-          </View>
+            <View style={{ width: editorFrame.width, height: editorFrame.height }}>
+              {editingSlotId && editingMedia?.kind === 'photo' && editingMedia.uri && (
+                <View style={styles.editorDim}>
+                  <FramedMedia
+                    uri={editingMedia.uri}
+                    kind="photo"
+                    displayWidth={editingMedia.width}
+                    displayHeight={editingMedia.height}
+                    transform={draftTransform}
+                    slotWidth={editorFrame.width}
+                    slotHeight={editorFrame.height}
+                    opacity={0.35}
+                  />
+                </View>
+              )}
+              {editingSlotId && editingMedia?.kind === 'video' && editingMedia.previewUri && (
+                <View style={styles.editorDim}>
+                  <FramedMedia
+                    uri={editingMedia.previewUri}
+                    kind="video"
+                    displayWidth={editingMedia.width}
+                    displayHeight={editingMedia.height}
+                    stillWidth={editingMedia.stillWidth}
+                    stillHeight={editingMedia.stillHeight}
+                    rotation={editingMedia.rotation}
+                    transform={draftTransform}
+                    slotWidth={editorFrame.width}
+                    slotHeight={editorFrame.height}
+                    opacity={0.35}
+                  />
+                </View>
+              )}
+              <View style={styles.editorCanvas}>
+                {editingSlotId && editingMedia?.uri && editingMedia.kind === 'photo' && (
+                  <FramedMedia
+                    uri={editingMedia.uri}
+                    kind="photo"
+                    displayWidth={editingMedia.width}
+                    displayHeight={editingMedia.height}
+                    transform={draftTransform}
+                    slotWidth={editorFrame.width}
+                    slotHeight={editorFrame.height}
+                  />
+                )}
+                {editingSlotId && editingMedia?.uri && editingMedia.kind === 'video' && (
+                  <FramedMedia
+                    uri={editingMedia.uri}
+                    kind="video"
+                    displayWidth={editingMedia.width}
+                    displayHeight={editingMedia.height}
+                    transform={draftTransform}
+                    playVideo
+                    muted
+                    slotWidth={editorFrame.width}
+                    slotHeight={editorFrame.height}
+                  />
+                )}
+                {isEditorGesture && (
+                  <View pointerEvents="none" style={StyleSheet.absoluteFill}>
+                    <View style={[styles.editorGridLine, styles.editorGridV, { left: '33.33%' }]} />
+                    <View style={[styles.editorGridLine, styles.editorGridV, { left: '66.66%' }]} />
+                    <View style={[styles.editorGridLine, styles.editorGridH, { top: '33.33%' }]} />
+                    <View style={[styles.editorGridLine, styles.editorGridH, { top: '66.66%' }]} />
+                  </View>
+                )}
+              </View>
+              <View pointerEvents="none" style={styles.editorFrameBorder} />
+            </View>
           </View>
 
-          <View style={styles.editorZoomRow}>
-            <Pressable style={styles.editorZoomButton} onPress={() => onZoomStep(-0.1)}>
-              <Text style={styles.editorZoomButtonText}>-</Text>
-            </Pressable>
+          <Text style={styles.editorHint}>Arrastra para mover · pellizca o desliza para el zoom</Text>
+
+          <View style={styles.editorZoomBlock}>
             <Text style={styles.editorZoomLabel}>Zoom {(draftTransform.scale * 100).toFixed(0)}%</Text>
-            <Pressable style={styles.editorZoomButton} onPress={() => onZoomStep(0.1)}>
-              <Text style={styles.editorZoomButtonText}>+</Text>
-            </Pressable>
+            <View style={styles.editorSliderRow}>
+              <Text style={styles.editorSliderEnd}>{MIN_PHOTO_SCALE}×</Text>
+              <View style={styles.editorSliderFlex}>
+                <ZoomSlider
+                  value={draftTransform.scale}
+                  min={MIN_PHOTO_SCALE}
+                  max={MAX_PHOTO_SCALE}
+                  onChange={(next) => setDraftTransform((prev) => ({ ...prev, scale: next }))}
+                />
+              </View>
+              <Text style={styles.editorSliderEnd}>{MAX_PHOTO_SCALE}×</Text>
+            </View>
           </View>
 
-          <View style={styles.editorActionsRow}>
-            <Pressable
-              style={styles.editorGhostButton}
-              onPress={() => setDraftTransform(normalizeTransform(null))}
-            >
-              <Text style={styles.editorGhostButtonText}>Reset</Text>
-            </Pressable>
-            <Pressable style={styles.editorGhostButton} onPress={() => setEditingSlotId(null)}>
-              <Text style={styles.editorGhostButtonText}>Cancelar</Text>
-            </Pressable>
-            <Pressable style={styles.editorPrimaryButton} onPress={onSavePhotoEditor}>
-              <Text style={styles.editorPrimaryButtonText}>Guardar</Text>
-            </Pressable>
-          </View>
+          <Pressable
+            style={styles.editorResetLink}
+            onPress={() => setDraftTransform(normalizeTransform(null))}
+            hitSlop={8}
+            accessibilityRole="button"
+          >
+            <Text style={styles.editorResetText}>Restablecer</Text>
+          </Pressable>
+          <Text style={styles.editorHintSmall}>Doble toque: alterna 1× y 2×</Text>
         </SafeAreaView>
         </SafeAreaProvider>
       </Modal>

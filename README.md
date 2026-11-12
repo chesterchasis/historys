@@ -28,20 +28,20 @@ La interfaz, la vista previa a pantalla completa y el motor de renderizado en **
 | :--- | :--- |
 | **Lienzo 9:16 real** | Salida nativa en **Full HD (`1080 × 1920` a 30 fps)** con opción **Con bordes** (`24 px` de margen y separación) o **Sin bordes**. |
 | **3 diseños visuales** | Selector gráfico en miniatura (**`3 bandas`**, **`2+1`** y **`1+2`**). Al cambiar de diseño se conservan los archivos ya cargados en cada hueco. |
-| **Encuadre unificado** | Editor con la proporción exacta del hueco elegido, zoom con pinza o botones (`100 % – 400 %`) y desplazamiento normalizado idéntico en miniatura, preview y MP4. |
+| **Encuadre unificado** | Editor con la proporción exacta del hueco elegido, zoom con pinza, doble toque o deslizador (`100 % – 400 %`), parte recortada visible en tenue y cuadrícula de tercios al arrastrar y desplazamiento normalizado idéntico en miniatura, preview y MP4. |
 | **Corrección de cámara** | Lectura previa con `ffprobe` (`displaymatrix` y metadato `rotate`) para enderezar automáticamente vídeos verticales sin girar las fotografías. |
 | **Mezcla de audio AAC** | Control individual **Audio / Silencio** por cada vídeo y mezcla automática (`amix`) en una sola pista estéreo AAC (`44.1 kHz`). Los vídeos sin pista de audio no interrumpen el render. |
-| **Selector de calidad** | Tres niveles sobre resolución 1080p: **Baja** (`6 Mbps`), **Media** (`15 Mbps`, por defecto) y **Alta** (`28 Mbps`), con cadena `h264_mediacodec` / `h264_videotoolbox` → `libx264` → `mpeg4`. |
+| **Selector de calidad** | Tres niveles sobre resolución 1080p: **Ligera** (`6 Mbps`), **Normal** (`15 Mbps`, por defecto) y **Máxima** (`28 Mbps`), con el peso aproximado en MB en la hoja de exportación, con cadena `h264_mediacodec` / `h264_videotoolbox` → `libx264` → `mpeg4`. |
 | **Flujo no destructivo** | Al exportar, el archivo se guarda en el álbum **`Historys`** de la galería y el collage permanece cargado en pantalla para seguir editando o crear uno nuevo bajo confirmación. |
 
 ---
 
 ## Cómo funciona la app
 
-1. **Elige la forma y los bordes:** toca una de las tres miniaturas (`3 bandas`, `2+1` o `1+2`) y alterna entre `Con bordes` o `Sin bordes`.
-2. **Toca cualquier hueco del marco 9:16:** debajo se despliega la barra contextual para ese hueco (`Cargar`, `Ajustar`, `Audio / Silencio` y `Quitar`). Los huecos que dejes vacíos se renderizan en negro puro.
-3. **Ajusta duración y calidad:** elige entre `5s`, `10s`, `15s` o `30s` y la tasa de bits (`Baja`, `Media` o `Alta`).
-4. **Previsualiza o exporta:** abre `Preview` a pantalla completa con cuenta atrás en tiempo real o pulsa `Exportar` para generar el MP4 en el álbum **Historys**.
+1. **Elige la forma y los bordes:** toca `Diseño`, elige una de las tres miniaturas (`3 bandas`, `2+1` o `1+2`) y activa o desactiva el interruptor `Bordes`.
+2. **Toca cualquier hueco del marco 9:16:** la barra de herramientas se convierte en la de ese hueco (`Cambiar`, `Ajustar`, `Sonido`, `Quitar` y `Listo`). Un doble toque abre `Ajustar`, y si mantienes pulsado un hueco y lo sueltas sobre otro, se intercambian con su encuadre y su sonido. Los huecos que dejes vacíos se renderizan en negro puro.
+3. **Ajusta la duración:** toca `Duración` y elige entre `5s`, `10s`, `15s` o `30s`.
+4. **Previsualiza o exporta:** abre `Preview` a pantalla completa con cuenta atrás en tiempo real o pulsa `Exportar`: en la hoja «Guardar historia» eliges la calidad (`Ligera`, `Normal` o `Máxima`) y guardas el MP4 en el álbum **Historys**, con progreso y botón `Cancelar`.
 
 ---
 
@@ -49,7 +49,7 @@ La interfaz, la vista previa a pantalla completa y el motor de renderizado en **
 
 - **Core:** [Expo SDK 54](https://docs.expo.dev/) · [React Native 0.81.5](https://reactnative.dev/) · [React 19](https://react.dev/) · TypeScript (`strict`).
 - **Vídeo y procesamiento:** [`@wokcito/ffmpeg-kit-react-native`](https://github.com/wokcito/ffmpeg-kit-react-native) (`FFmpegKit` + `FFprobeKit`), `expo-av`, `expo-video-thumbnails`.
-- **Sistema y galería:** `expo-image-picker`, `expo-media-library`, `expo-file-system`, `react-native-view-shot`, `react-native-safe-area-context`.
+- **Sistema y galería:** `@expo/vector-icons`, `expo-image-picker`, `expo-media-library`, `expo-file-system`, `react-native-view-shot`, `react-native-safe-area-context`.
 
 ---
 
@@ -157,9 +157,9 @@ cd android
 - **Adaptación completa a pantallas edge-to-edge** (cámara perforada y barra de gestos de Android 15 / One UI) mediante `react-native-safe-area-context`.
 - **Lienzo 9:16 limpio** con barra de acciones contextual fuera del marco.
 - **Matemática de encuadre única (`placedMediaRect`)** compartida entre el editor, las miniaturas, el preview y el `crop` de FFmpeg.
-- **Enderezado automático de vídeos verticales** mediante `ffprobe` (`transpose` / `hflip,vflip`) con indicador `Corregido`.
+- **Enderezado automático de vídeos verticales** mediante `ffprobe` (`transpose` / `hflip,vflip`) y aviso al cargar el vídeo.
 - **Mezcla de audio (`amix`)** en una única pista AAC estéreo cuando coinciden varios vídeos con sonido.
-- **Selector de calidad (`Baja`, `Media`, `Alta`)** con respaldo `libx264` antes de `mpeg4` y verificación del códec final con `ffprobe`.
+- **Selector de calidad (`Ligera`, `Normal`, `Máxima`)** con respaldo `libx264` antes de `mpeg4` y verificación del códec final con `ffprobe`.
 - **Selector visual de diseño en miniatura** (`3 bandas`, `2+1`, `1+2`) y hoja final **«Listo»** que conserva el trabajo en pantalla.
 
 Consulta el detalle visual de cada mejora en **[`docs/plan-10-fases.pdf`](docs/plan-10-fases.pdf)** y la lista de pruebas en **[`docs/CHECKS.md`](docs/CHECKS.md)**.
