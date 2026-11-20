@@ -33,10 +33,13 @@ const FILE_NAME = 'historys-settings.json';
 
 const fileHandle = () => new FileSystem.File(FileSystem.Paths.document, FILE_NAME);
 
+/** Sube cuando cambia un valor por defecto, para que también se aplique a quien ya tenía ajustes guardados. */
+const SETTINGS_VERSION = 2;
+
 export const DEFAULT_SETTINGS: AppSettings = {
   theme: 'auto',
   rememberDesign: true,
-  muteOnLoad: false,
+  muteOnLoad: true,
   design: null,
 };
 
@@ -71,7 +74,10 @@ export async function loadSettings(): Promise<AppSettings> {
       theme: isPreference(parsed?.theme) ? parsed.theme : DEFAULT_SETTINGS.theme,
       rememberDesign:
         typeof parsed?.rememberDesign === 'boolean' ? parsed.rememberDesign : DEFAULT_SETTINGS.rememberDesign,
-      muteOnLoad: typeof parsed?.muteOnLoad === 'boolean' ? parsed.muteOnLoad : DEFAULT_SETTINGS.muteOnLoad,
+      muteOnLoad:
+        parsed?.version === SETTINGS_VERSION && typeof parsed?.muteOnLoad === 'boolean'
+          ? parsed.muteOnLoad
+          : DEFAULT_SETTINGS.muteOnLoad,
       design: readDesign(parsed?.design),
     };
   } catch {
@@ -83,7 +89,7 @@ export function saveSettings(settings: AppSettings) {
   try {
     const file = fileHandle();
     if (!file.exists) file.create({ overwrite: true });
-    file.write(JSON.stringify(settings));
+    file.write(JSON.stringify({ ...settings, version: SETTINGS_VERSION }));
   } catch {
     // Si no se puede guardar, se vuelve a los valores de siempre la próxima vez. No es grave.
   }

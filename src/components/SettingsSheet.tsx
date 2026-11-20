@@ -119,6 +119,15 @@ export function SettingsSheet({ visible, onClose, onHelp, onNewCollage, onResetH
             contentContainerStyle={styles.infoModalScrollContent}
             showsVerticalScrollIndicator={false}
           >
+            <Section title="Collage">
+              <ActionRow
+                label="Nuevo collage…"
+                hint="Vacía los huecos y empieza otro."
+                danger
+                onPress={run(onNewCollage)}
+              />
+            </Section>
+
             <Section title="Apariencia">
               <View style={styles.settingsSegments}>
                 <View style={[styles.segTrack, styles.settingsSegTrack]} accessibilityRole="radiogroup">
@@ -170,17 +179,8 @@ export function SettingsSheet({ visible, onClose, onHelp, onNewCollage, onResetH
               />
             </Section>
 
-            <Section title="Collage">
-              <ActionRow
-                label="Nuevo collage…"
-                hint="Vacía los huecos y empieza otro."
-                danger
-                onPress={run(onNewCollage)}
-              />
-            </Section>
-
             <View style={styles.settingsFooterBlock}>
-              <Text style={styles.settingsFooterTitle}>Historys By chesterchasis</Text>
+              <Text style={styles.settingsFooter}>Historys By chesterchasis</Text>
               {version ? <Text style={styles.settingsFooter}>Versión {version}</Text> : null}
             </View>
           </ScrollView>

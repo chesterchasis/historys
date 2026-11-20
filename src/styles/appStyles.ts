@@ -251,12 +251,6 @@ export const lightStyles = StyleSheet.create({
     gap: 2,
     paddingVertical: 6,
   },
-  settingsFooterTitle: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: '#2f3638',
-    letterSpacing: 0.2,
-  },
   settingsFooter: {
     textAlign: 'center',
     fontSize: 11.5,
@@ -293,6 +287,8 @@ export const lightStyles = StyleSheet.create({
     width: 34,
     height: 34,
     borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#dbd7d1',
   },
   title: {
     fontSize: 26,
@@ -1226,6 +1222,10 @@ export const lightStyles = StyleSheet.create({
     height: 14,
     backgroundColor: '#2f3638',
     transform: [{ rotate: '45deg' }],
+  },
+  coachArrowUp: {
+    bottom: undefined,
+    top: -6,
   },
 });
 

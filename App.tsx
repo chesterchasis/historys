@@ -9,13 +9,13 @@ import {
   Animated,
   Easing,
   GestureResponderEvent,
-  Linking,
   Modal,
   PanResponder,
   Pressable,
   ScrollView,
   StyleSheet,
   Text,
+  useWindowDimensions,
   View,
 } from 'react-native';
 import { initialWindowMetrics, SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
@@ -68,6 +68,13 @@ import { canTrimClip, effectiveTrimStartMs } from './src/utils/trim';
 
 /** Altura aproximada de la barra, Exportar y márgenes: la burbuja queda justo encima de la barra. */
 const HINT_BOTTOM = 152;
+/** Aire entre la burbuja y lo que señala. */
+const HINT_GAP = 12;
+const SCREEN_PADDING = 16;
+const DOCK_PADDING = 6;
+const DOCK_GAP = 4;
+const DOCK_ITEMS = 4;
+const ARROW_MARGIN = 22;
 
 const EMPTY_SLOTS: Record<string, SlotMedia> = {
   'slot-1': { kind: 'empty' },
@@ -109,7 +116,6 @@ function AppContent() {
   const [previewRemaining, setPreviewRemaining] = useState(0);
   const [previewSession, setPreviewSession] = useState(0);
   const [editingSlotId, setEditingSlotId] = useState<string | null>(null);
-  const [permissionDeniedVisible, setPermissionDeniedVisible] = useState(false);
   const [resetDialog, setResetDialog] = useState<
     { kind: 'closed' } | { kind: 'empty' } | { kind: 'confirm' }
   >({ kind: 'closed' });
@@ -226,7 +232,6 @@ function AppContent() {
     setOpenPanel(null);
     setEditingSlotId(null);
     setIsPreviewOpen(false);
-    setPermissionDeniedVisible(false);
     setExportSheetOpen(false);
     setResetDialog({ kind: 'closed' });
     setFeedbackDialog({ kind: 'closed' });
@@ -420,6 +425,34 @@ function AppContent() {
     else if (onboarding.adjust && !onboarding.export && exportSheetOpen) markHintSeen('export');
   }, [onboarding, filledCount, selectedSlotId, exportSheetOpen]);
 
+  // Cada burbuja señala lo suyo: Añadir en la barra, el primer hueco con contenido, o el botón Exportar.
+  const { width: windowWidth } = useWindowDimensions();
+  const bubbleWidth = windowWidth - SCREEN_PADDING * 2;
+  const clampArrow = (x: number) => clamp(x, ARROW_MARGIN, bubbleWidth - ARROW_MARGIN);
+  const dockItemWidth = (bubbleWidth - DOCK_PADDING * 2 - DOCK_GAP * (DOCK_ITEMS - 1)) / DOCK_ITEMS;
+  const firstFilledSlot = activeSlots.find((slot) => (slots[slot.id]?.kind ?? 'empty') !== 'empty');
+  const hintSlotBounds = firstFilledSlot
+    ? getSlotBoundsMap(layout, hasBlackBorders, format)[firstFilledSlot.id]
+    : undefined;
+  const hintCanvasScale = canvasFrame.height / FORMAT_SIZES[format].height;
+  const hintTargets = {
+    addX: clampArrow(DOCK_PADDING + 2 * (dockItemWidth + DOCK_GAP) + dockItemWidth / 2),
+    exportX: bubbleWidth / 2,
+    exportBottom: Math.max(0, screenHeight - (stackRect.y + stackRect.height + 10)) + 8,
+    slot:
+      hintSlotBounds && canvasFrame.width > 0
+        ? {
+            bottom:
+              zoneRect.y +
+              (canvasBox.height - canvasFrame.height) / 2 +
+              (hintSlotBounds.y + hintSlotBounds.height) * hintCanvasScale,
+            centerX: clampArrow(
+              (canvasBox.width - canvasFrame.width) / 2 + (hintSlotBounds.x + hintSlotBounds.width / 2) * hintCanvasScale
+            ),
+          }
+        : null,
+  };
+
   const hintBusy = Boolean(openPanel) || Boolean(selectedSlotId) || exportSheetOpen || isExporting || isDraggingSlot;
   let activeHint: HintStep | null = null;
   if (onboarding && !hintBusy) {
@@ -456,13 +489,8 @@ function AppContent() {
     }, 3500);
   };
 
-  const pickMediaForSlots = async (slotIds: string[]): Promise<'picked' | 'denied' | 'canceled'> => {
-    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
-
-    if (!permission.granted) {
-      return 'denied';
-    }
-
+  const pickMediaForSlots = async (slotIds: string[]): Promise<'picked' | 'canceled'> => {
+    // El selector del sistema no necesita permiso de acceso a la galería: solo recibe lo que eliges.
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ['images', 'videos'],
       quality: 1,
@@ -500,11 +528,6 @@ function AppContent() {
     if (slotIds.length === 0 || isPickingRef.current) return;
     isPickingRef.current = true;
     pickMediaForSlots(slotIds)
-      .then((outcome) => {
-        if (outcome === 'denied') {
-          setPermissionDeniedVisible(true);
-        }
-      })
       .catch(() => {
         Alert.alert('Error', 'No se pudo abrir la librería. Intenta nuevamente.');
       })
@@ -630,7 +653,8 @@ function AppContent() {
       setIsExporting(true);
       setExportStatus('Preparando exportación...');
       updateExportProgress(0.03);
-      const permission = await MediaLibrary.requestPermissionsAsync();
+      // Solo se pide permiso de escritura: en Android 13 o superior no hace falta ninguno para guardar.
+      const permission = await MediaLibrary.requestPermissionsAsync(true);
       if (!permission.granted) {
         Alert.alert(
           'Permiso necesario',
@@ -1167,16 +1191,17 @@ function AppContent() {
             body="Elige hasta 3 fotos o vídeos con Añadir, o toca un hueco."
             step="1 de 3"
             bottom={HINT_BOTTOM}
-            arrowLeft="60%"
+            arrowX={hintTargets.addX}
             onDismiss={() => markHintSeen('add')}
           />
         )}
-        {activeHint === 'adjust' && (
+        {activeHint === 'adjust' && hintTargets.slot && (
           <Coachmark
             title="Toca un hueco"
             body="Ajusta el encuadre, cambia el clip o silencia el sonido. Mantén pulsado y arrastra para cambiar de sitio."
             step="2 de 3"
-            bottom={HINT_BOTTOM}
+            top={hintTargets.slot.bottom + HINT_GAP}
+            arrowX={hintTargets.slot.centerX}
             onDismiss={() => markHintSeen('adjust')}
           />
         )}
@@ -1185,7 +1210,8 @@ function AppContent() {
             title="Cuando termines"
             body="Pulsa Exportar para guardar tu historia en la galería."
             step="3 de 3"
-            bottom={HINT_BOTTOM}
+            bottom={hintTargets.exportBottom}
+            arrowX={hintTargets.exportX}
             onDismiss={() => markHintSeen('export')}
           />
         )}
@@ -1253,48 +1279,6 @@ function AppContent() {
           />
         </View>
       </View>
-
-      <Modal
-        visible={permissionDeniedVisible}
-        animationType="fade"
-        transparent
-        onRequestClose={() => setPermissionDeniedVisible(false)}
-      >
-        <View style={styles.libraryModalOuter}>
-          <Pressable
-            style={styles.libraryModalDim}
-            accessibilityRole="button"
-            accessibilityLabel="Cerrar"
-            onPress={() => setPermissionDeniedVisible(false)}
-          />
-          <View style={styles.libraryModalCard}>
-            <Text style={styles.libraryModalTitle}>Permiso necesario</Text>
-            <Text style={styles.libraryModalMessage}>
-              Necesitamos acceso a tu librería para cargar fotos y videos. Puedes activarlo en
-              los ajustes del sistema.
-            </Text>
-            <View style={styles.libraryModalActions}>
-              <Pressable
-                style={[styles.slotButtonGhost, { flex: 1, alignItems: 'center' }]}
-                onPress={() => setPermissionDeniedVisible(false)}
-              >
-                <Text style={styles.slotButtonGhostText}>Ahora no</Text>
-              </Pressable>
-              <Pressable
-                style={[styles.slotButton, { flex: 1, alignItems: 'center' }]}
-                onPress={() => {
-                  setPermissionDeniedVisible(false);
-                  Linking.openSettings().catch(() => {
-                    Alert.alert('Ajustes', 'Abre los ajustes del teléfono y da acceso a fotos a Historys.');
-                  });
-                }}
-              >
-                <Text style={styles.slotButtonText}>Abrir ajustes</Text>
-              </Pressable>
-            </View>
-          </View>
-        </View>
-      </Modal>
 
       <Modal
         visible={resetDialog.kind !== 'closed'}

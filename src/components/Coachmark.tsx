@@ -5,16 +5,23 @@ type Props = {
   title: string;
   body: string;
   step: string;
-  bottom: number;
-  /** Horizontal position of the arrow inside the bubble, as a percentage string such as '62%'. */
-  arrowLeft?: string;
+  /** Distancia al borde inferior de la pantalla: la burbuja queda encima de lo que señala. */
+  bottom?: number;
+  /** Distancia al borde superior: la burbuja queda debajo de lo que señala. */
+  top?: number;
+  /** Posición horizontal de la punta, en píxeles desde el borde izquierdo de la burbuja. */
+  arrowX: number;
   onDismiss: () => void;
 };
 
-export function Coachmark({ title, body, step, bottom, arrowLeft = '50%', onDismiss }: Props) {
+const ARROW_SIZE = 14;
+
+export function Coachmark({ title, body, step, bottom, top, arrowX, onDismiss }: Props) {
   const { styles } = useTheme();
+  const pointsUp = top != null;
+
   return (
-    <View pointerEvents="box-none" style={[styles.coachWrap, { bottom }]}>
+    <View pointerEvents="box-none" style={[styles.coachWrap, pointsUp ? { top } : { bottom }]}>
       <Pressable
         accessibilityRole="button"
         accessibilityLabel={`${title}. ${body}. Toca para cerrar.`}
@@ -24,7 +31,9 @@ export function Coachmark({ title, body, step, bottom, arrowLeft = '50%', onDism
         <Text style={styles.coachTitle}>{title}</Text>
         <Text style={styles.coachBody}>{body}</Text>
         <Text style={styles.coachStep}>{step}</Text>
-        <View style={[styles.coachArrow, { left: arrowLeft as `${number}%` }]} />
+        <View
+          style={[styles.coachArrow, pointsUp ? styles.coachArrowUp : null, { left: arrowX - ARROW_SIZE / 2 }]}
+        />
       </Pressable>
     </View>
   );

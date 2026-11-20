@@ -210,9 +210,23 @@ const probeOutputVideoCodec = async (uri: string): Promise<string> => {
   }
 };
 
+const ALBUM_NAME = 'Historys';
+
 export const saveToGallery = async (assetUri: string) => {
+  if (Platform.OS === 'android') {
+    // Crea el archivo directamente dentro del álbum. No consulta la galería, así que
+    // no hace falta permiso de lectura de fotos y vídeos.
+    try {
+      await MediaLibrary.createAlbumAsync(ALBUM_NAME, undefined, false, assetUri);
+    } catch (error) {
+      console.warn('Album save failed, saving to the default folder', error);
+      await MediaLibrary.saveToLibraryAsync(assetUri);
+    }
+    return;
+  }
+
   const asset = await MediaLibrary.createAssetAsync(assetUri);
-  const albumName = 'Historys';
+  const albumName = ALBUM_NAME;
   const existingAlbum = await MediaLibrary.getAlbumAsync(albumName);
 
   if (existingAlbum) {

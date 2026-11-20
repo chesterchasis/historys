@@ -212,7 +212,9 @@ Pendiente: el botón «Compartir» del aviso final (necesita `expo-sharing`, que
 
 Para repetir la guía, borra los datos de la app (Ajustes del teléfono → Apps → Historys → Almacenamiento).
 
-- [ ] Con la app recién instalada y el lienzo vacío sale la burbuja «Empieza aquí» (1 de 3) sobre la barra, con la flecha hacia Añadir.
+- [ ] Con la app recién instalada y el lienzo vacío sale la burbuja «Empieza aquí» (1 de 3) sobre la barra, con la punta justo encima del botón Añadir.
+- [ ] La burbuja «Toca un hueco» (2 de 3) sale debajo del primer hueco con contenido y su punta apunta hacia arriba a ese hueco, en cualquier forma, formato y con el hueco en cualquier posición.
+- [ ] La burbuja «Cuando termines» (3 de 3) sale justo encima del botón Exportar, con la punta hacia abajo señalándolo.
 - [ ] Tocar la burbuja, o cargar una foto, la cierra y no vuelve a salir.
 - [ ] Con contenido cargado y nada seleccionado sale «Toca un hueco» (2 de 3). Al tocar un hueco desaparece y no vuelve.
 - [ ] Después sale «Cuando termines» (3 de 3). Al pulsar Exportar desaparece y no vuelve.
@@ -283,16 +285,31 @@ Esta versión de FFmpeg no incluye `zscale`, así que la conversión HDR → SDR
 ## Ventana de ajustes
 
 - [ ] El botón de arriba es un engranaje. Al tocarlo se abre una ventana centrada, con las mismas esquinas redondeadas que el resto de ventanas (guía, avisos), y un fondo atenuado detrás.
-- [ ] La ventana tiene las secciones Apariencia, Diseño, Vídeos, Ayuda y Collage, y abajo «Historys By chesterchasis» con la versión debajo. Si no cabe, se desplaza.
+- [ ] La ventana tiene las secciones Collage (arriba del todo, con «Nuevo collage…»), Apariencia, Diseño, Vídeos y Ayuda, y abajo «Historys By chesterchasis» con la versión debajo, ambas en el mismo tipo de letra y sin negrita. Si no cabe, se desplaza.
 - [ ] Apariencia: Claro, Oscuro y Auto; Auto sigue al teléfono.
 - [ ] «Recordar mi último diseño» (activado de serie): cambiar formato, fondo, forma, bordes, duración o calidad, cerrar la app del todo y abrirla de nuevo vuelve con ese diseño. Los huecos empiezan vacíos.
 - [ ] Con «Recordar mi último diseño» apagado, la app abre siempre con 3 bandas, 9:16, fondo negro, con bordes, 10 s y calidad Normal.
-- [ ] «Silenciar vídeos al cargarlos»: con el interruptor activado, un vídeo nuevo entra con el altavoz tachado; se puede activar en el hueco. Con él apagado, entran con sonido como antes.
+- [ ] «Silenciar vídeos al cargarlos» viene activado de serie, también para quien ya tenía ajustes guardados: un vídeo nuevo entra con el altavoz tachado y se puede activar en el hueco. Con el interruptor apagado, entran con sonido.
+- [ ] El icono junto al título «Historys» tiene un contorno fino y suave, también en modo oscuro.
 - [ ] «Guía rápida» cierra los ajustes y abre la guía.
 - [ ] «Repetir la guía de inicio» cierra los ajustes, avisa «Las burbujas de ayuda volverán a salir» y las burbujas vuelven a aparecer en orden.
 - [ ] «Nuevo collage…» (en rojo) cierra los ajustes y pide confirmación antes de vaciar.
 - [ ] En modo oscuro la ventana se lee bien: texto, grupos, interruptores y el selector.
 - [ ] Todos los ajustes se conservan al cerrar y abrir la app.
+
+## Preparación para Google Play — API 36 y permisos
+
+Requiere reconstruir la app (`npx expo prebuild --platform android`, `Build > Clean Project` y volver a instalar).
+
+- [ ] La app compila y arranca con `targetSdkVersion` 36 y `compileSdkVersion` 36.
+- [ ] Android 16: la barra de estado y la de navegación no tapan nada (la app ya usa pantalla completa). El gesto de atrás cierra las ventanas (ajustes, guía, hoja de exportación, editor) y no cierra la app por error.
+- [ ] Al cargar una foto o un vídeo la app **no** pide ningún permiso: se abre directamente el selector de fotos del sistema.
+- [ ] Al exportar, la app no pide permiso de fotos y vídeos. En Android 13 o superior no sale ningún diálogo de permisos.
+- [ ] Un vídeo exportado aparece en el álbum «Historys» de la galería. Exportar otro lo añade al mismo álbum, sin duplicarlo ni crear otro.
+- [ ] Una foto exportada (solo fotos) también aparece en «Historys».
+- [ ] En Ajustes del teléfono → Apps → Historys → Permisos no aparece ninguno de cámara, micrófono, fotos y vídeos ni música y audio.
+- [ ] En un teléfono con Android 12 o anterior, exportar pide el permiso de almacenamiento una vez y guarda bien. (Si no hay uno a mano, se puede probar con un emulador.)
+- [ ] El permiso `WRITE_EXTERNAL_STORAGE` solo aparece limitado a Android 12 o anterior. Se comprueba al generar el `.aab` con la herramienta de análisis de Android Studio (`Build > Analyze APK`) o con la pestaña de manifiesto fusionado.
 
 ## Fuera de esta lista
 
